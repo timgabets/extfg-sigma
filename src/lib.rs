@@ -4,6 +4,8 @@ use std::io;
 
 //use std::collections::BTreeMap;
 
+mod util;
+
 #[derive(Debug)]
 pub struct SigmaRequest {
     saf: String,
@@ -83,10 +85,26 @@ impl SigmaRequest {
             }
         }
 
-        // TODO: unwrapping unwrappable unwraps:
-        req.auth_serno = data.get("Serno").unwrap().as_u64().unwrap();
+        // Source
+        f = "Serno";
+        match data.get(f) {
+            Some(opt) => match opt.as_u64() {
+                Some(v) => {
+                    req.auth_serno = v;
+                }
+                None => {
+                    println!(
+                        "Incoming request has invalid {} field data format - should be u64",
+                        f
+                    );
+                    return Err(io::ErrorKind::InvalidData);
+                }
+            },
+            None => {
+                req.auth_serno = util::gen_auth_serno();
+            }
+        }
 
-        // TODO: gen_auth_serno()
         Ok(req)
     }
 
@@ -100,7 +118,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dummy() {
+    fn ok() {
         let payload = r#"{
             "SAF": "Y",
             "SRC": "M",
@@ -219,5 +237,21 @@ mod tests {
             ),
             Err(_) => assert!(true),
         }
+    }
+
+    #[test]
+    fn generating_auth_serno() {
+        let payload = r#"{
+                "SAF": "Y",
+                "SRC": "M",
+                "MTI": "0200",
+                "T0000": "02371492071643"
+            }"#;
+
+        let r: SigmaRequest = SigmaRequest::new(serde_json::from_str(&payload).unwrap()).unwrap();
+        assert!(
+            r.auth_serno > 0,
+            "Should generate authorization serno if the field is missing"
+        );
     }
 }
