@@ -1,4 +1,3 @@
-//use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io;
 
@@ -13,7 +12,7 @@ pub struct SigmaRequest {
     mti: String,
     auth_serno: u64,
     tags: BTreeMap<usize, String>,
-    //iso_fields: BTreeMap<String, String>,
+    iso_fields: BTreeMap<usize, String>,
 }
 
 impl SigmaRequest {
@@ -24,6 +23,7 @@ impl SigmaRequest {
             mti: String::from("0100"),
             auth_serno: 0,
             tags: BTreeMap::new(),
+            iso_fields: BTreeMap::new(),
         };
 
         // SAF
@@ -129,7 +129,26 @@ impl SigmaRequest {
         }
 
         // ISO Fields
-        
+        for i in 0..128 {
+            let id = format!("i{:03}", i);
+            match data.get(id) {
+                Some(tag) => match tag.as_str() {
+                    Some(v) => {
+                        req.iso_fields.insert(i, v.to_string());
+                    }
+                    None => match tag.as_u64() {
+                        Some(v) => {
+                            req.iso_fields.insert(i, v.to_string());
+                        }
+                        None => {
+                            println!("Incoming request has invalid {} field data format - should be either String or u64", format!("i{:03}", i));
+                            return Err(io::ErrorKind::InvalidData);
+                        }
+                    },
+                },
+                None => {}
+            }
+        }
 
         Ok(req)
     }
@@ -165,7 +184,30 @@ mod tests {
             "T0014": "IDDQD Bank",
             "T0016": 74707182,
             "T0018": "Y",
-            "T0022": "000000000010"
+            "T0022": "000000000010",
+            "i000": "0100",
+			"i002": "555544******1111",
+			"i003": "500000",
+			"i004": "000100000000",
+			"i006": "000100000000",
+			"i007": "0629151748",
+			"i011": "100250",
+			"i012": "181748",
+			"i013": "0629",
+			"i018": "0000",
+			"i022": "0000",
+			"i025": "02",
+			"i032": "010455",
+			"i037": "002595100250",
+			"i041": 990,
+			"i042": "DCZ1",
+			"i043": "IDDQD Bank.                         GE",
+			"i048": "USRDT|2595100250",
+			"i049": 643,
+			"i051": 643,
+			"i060": 3,
+			"i101": 91926242,
+			"i102": 2371492071643
         }"#;
 
         let r: SigmaRequest = SigmaRequest::new(serde_json::from_str(&payload).unwrap()).unwrap();
@@ -210,6 +252,39 @@ mod tests {
         }
         assert_eq!(r.tags.get(&18).unwrap(), "Y");
         assert_eq!(r.tags.get(&22).unwrap(), "000000000010");
+
+        assert_eq!(r.iso_fields.get(&0).unwrap(), "0100");
+
+        match r.iso_fields.get(&1) {
+            Some(_) => assert!(false),
+            None => assert!(true),
+        }
+
+        assert_eq!(r.iso_fields.get(&2).unwrap(), "555544******1111");
+        assert_eq!(r.iso_fields.get(&3).unwrap(), "500000");
+        assert_eq!(r.iso_fields.get(&4).unwrap(), "000100000000");
+        assert_eq!(r.iso_fields.get(&6).unwrap(), "000100000000");
+        assert_eq!(r.iso_fields.get(&7).unwrap(), "0629151748");
+        assert_eq!(r.iso_fields.get(&11).unwrap(), "100250");
+        assert_eq!(r.iso_fields.get(&12).unwrap(), "181748");
+        assert_eq!(r.iso_fields.get(&13).unwrap(), "0629");
+        assert_eq!(r.iso_fields.get(&18).unwrap(), "0000");
+        assert_eq!(r.iso_fields.get(&22).unwrap(), "0000");
+        assert_eq!(r.iso_fields.get(&25).unwrap(), "02");
+        assert_eq!(r.iso_fields.get(&32).unwrap(), "010455");
+        assert_eq!(r.iso_fields.get(&37).unwrap(), "002595100250");
+        assert_eq!(r.iso_fields.get(&41).unwrap(), "990");
+        assert_eq!(r.iso_fields.get(&42).unwrap(), "DCZ1");
+        assert_eq!(
+            r.iso_fields.get(&43).unwrap(),
+            "IDDQD Bank.                         GE"
+        );
+        assert_eq!(r.iso_fields.get(&48).unwrap(), "USRDT|2595100250");
+        assert_eq!(r.iso_fields.get(&49).unwrap(), "643");
+        assert_eq!(r.iso_fields.get(&51).unwrap(), "643");
+        assert_eq!(r.iso_fields.get(&60).unwrap(), "3");
+        assert_eq!(r.iso_fields.get(&101).unwrap(), "91926242");
+        assert_eq!(r.iso_fields.get(&102).unwrap(), "2371492071643");
     }
 
     #[test]
