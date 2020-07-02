@@ -30,7 +30,7 @@ fn dec2bcd(dec: usize) -> i32 {
     -1
 }
 
-pub fn serialize_tag(index: usize, data: String) -> BytesMut {
+pub fn serialize_tag(index: usize, data: &str) -> BytesMut {
     let mut buf = BytesMut::with_capacity(1024);
     buf.put(&b"T"[..]);
     buf.put_u16(dec2bcd(index) as u16);
@@ -65,19 +65,19 @@ mod tests {
 
     #[test]
     fn t0009() {
-        let serialized = serialize_tag(9, "IDDQD".to_string());
+        let serialized = serialize_tag(9, "IDDQD");
         assert_eq!(serialized, b"T\x00\x09\x00\x00\x05IDDQD"[..]);
     }
 
     #[test]
     fn t0022() {
-        let serialized = serialize_tag(22, "XYZ".to_string());
+        let serialized = serialize_tag(22, "XYZ");
         assert_eq!(serialized, b"T\x00\x22\x00\x00\x03XYZ"[..]);
     }
 
     #[test]
     fn t0088() {
-        let serialized = serialize_tag(88, "Lorem ipsum dolor sit amet".to_string());
+        let serialized = serialize_tag(88, "Lorem ipsum dolor sit amet");
         assert_eq!(
             serialized,
             b"T\x00\x88\x00\x00\x26Lorem ipsum dolor sit amet"[..]
@@ -85,10 +85,10 @@ mod tests {
     }
     #[test]
     fn t0103() {
-        let serialized = serialize_tag(103, "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua".to_string());
+        let serialized = serialize_tag(103, "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua");
         assert_eq!(
-            serialized,
-            b"T\x01\x03\x00\x01\x22Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua"[..]
-        );
+                serialized,
+                b"T\x01\x03\x00\x01\x22Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua"[..]
+            );
     }
 }

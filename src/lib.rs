@@ -162,7 +162,9 @@ impl SigmaRequest {
         buf.put(self.mti.as_bytes());
         buf.put(format!("{}", self.auth_serno).as_bytes());
 
-        //buf.put(serialize_tag(0, self.tags[&0]));
+        for key in self.tags.keys() {
+            buf.put(serialize_tag(*key, self.tags[key].as_str()));
+        }
 
         Ok(buf.split())
     }
@@ -452,7 +454,9 @@ mod tests {
 
         let r: SigmaRequest = SigmaRequest::new(serde_json::from_str(&payload).unwrap()).unwrap();
         let serialized = r.serialize().unwrap();
-        assert_eq!(serialized, b"YM02006007040979"[..]);
-        //assert_eq!(serialized, b"YM02006007040979T\x00\x00\x00\x00\x132371492071643"[..]);
+        assert_eq!(
+            serialized,
+            b"YM02006007040979T\x00\x00\x00\x00\x132371492071643T\x00\x01\x00\x00\x01CT\x00\x02\x00\x00\x03643T\x00\x03\x00\x00\x12000100000000T\x00\x04\x00\x00\x03978T\x00\x05\x00\x00\x12000300000000T\x00\x06\x00\x00\x04OPS6T\x00\x07\x00\x00\x0219T\x00\x08\x00\x00\x03643T\x00\t\x00\x00\x043102T\x00\x10\x00\x00\x043104T\x00\x11\x00\x00\x012T\x00\x14\x00\x00\x10IDDQD BankT\x00\x16\x00\x00\x0874707182T\x00\x18\x00\x00\x01YT\x00\x22\x00\x00\x12000000000010"[..]
+        );
     }
 }
