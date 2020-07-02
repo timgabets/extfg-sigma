@@ -30,9 +30,18 @@ fn dec2bcd(dec: usize) -> i32 {
     -1
 }
 
-pub fn serialize_tag(index: usize, data: &str) -> BytesMut {
-    let mut buf = BytesMut::with_capacity(1024);
-    buf.put(&b"T"[..]);
+pub enum TagType {
+    Regular,
+    Iso,
+}
+
+pub fn serialize_tag(t: TagType, index: usize, data: &str) -> BytesMut {
+    // TODO: what the hell is capacity 🤔?
+    let mut buf = BytesMut::with_capacity(64);
+    match t {
+        TagType::Regular => buf.put(&b"T"[..]),
+        TagType::Iso => buf.put(&b"I"[..]),
+    };
     buf.put_u16(dec2bcd(index) as u16);
     buf.put_u8(0);
     buf.put_u16(dec2bcd(data.len()) as u16);
@@ -65,19 +74,19 @@ mod tests {
 
     #[test]
     fn t0009() {
-        let serialized = serialize_tag(9, "IDDQD");
+        let serialized = serialize_tag(TagType::Regular, 9, "IDDQD");
         assert_eq!(serialized, b"T\x00\x09\x00\x00\x05IDDQD"[..]);
     }
 
     #[test]
     fn t0022() {
-        let serialized = serialize_tag(22, "XYZ");
+        let serialized = serialize_tag(TagType::Regular, 22, "XYZ");
         assert_eq!(serialized, b"T\x00\x22\x00\x00\x03XYZ"[..]);
     }
 
     #[test]
     fn t0088() {
-        let serialized = serialize_tag(88, "Lorem ipsum dolor sit amet");
+        let serialized = serialize_tag(TagType::Regular, 88, "Lorem ipsum dolor sit amet");
         assert_eq!(
             serialized,
             b"T\x00\x88\x00\x00\x26Lorem ipsum dolor sit amet"[..]
@@ -85,10 +94,15 @@ mod tests {
     }
     #[test]
     fn t0103() {
-        let serialized = serialize_tag(103, "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua");
+        let serialized = serialize_tag(TagType::Regular, 103, "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua");
         assert_eq!(
                 serialized,
                 b"T\x01\x03\x00\x01\x22Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua"[..]
             );
+    }
+    #[test]
+    fn i0037() {
+        let serialized = serialize_tag(TagType::Iso, 37, "716387162837618273");
+        assert_eq!(serialized, b"I\x00\x37\x00\x00\x18716387162837618273"[..]);
     }
 }
