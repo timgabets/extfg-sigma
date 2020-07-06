@@ -1,6 +1,6 @@
 # extfg-sigma
 
-[![License: MIT](https://img.shields.io/crates/l/extfg-sigma)]
+![License: MIT](https://img.shields.io/crates/l/extfg-sigma)
 [![Crates.io](https://img.shields.io/crates/v/extfg-sigma.svg)](https://crates.io/crates/extfg-sigma)
 
 Rust community library for serializaing/deserializing Sigma extfg financial messages.
