@@ -30,6 +30,17 @@ fn dec2bcd(dec: usize) -> i32 {
     -1
 }
 
+pub fn msg_len(len: usize) -> BytesMut {
+    let mut buf = BytesMut::with_capacity(64);
+    buf.put_u8(((len % 100000) / 10000) as u8 + 0x30);
+    buf.put_u8(((len % 10000) / 1000) as u8 + 0x30);
+    buf.put_u8(((len % 1000) / 100) as u8 + 0x30);
+    buf.put_u8(((len % 100) / 10) as u8 + 0x30);
+    buf.put_u8((len % 10) as u8 + 0x30);
+
+    buf.split()
+}
+
 pub enum TagType {
     Regular,
     Iso,
@@ -104,5 +115,27 @@ mod tests {
     fn i0037() {
         let serialized = serialize_tag(TagType::Iso, 37, "716387162837618273");
         assert_eq!(serialized, b"I\x00\x37\x00\x00\x18716387162837618273"[..]);
+    }
+
+    #[test]
+    fn test_msg_len() {
+        assert_eq!(msg_len(1), b"00001"[..]);
+        assert_eq!(msg_len(2), b"00002"[..]);
+        assert_eq!(msg_len(9), b"00009"[..]);
+        assert_eq!(msg_len(25), b"00025"[..]);
+        assert_eq!(msg_len(68), b"00068"[..]);
+        assert_eq!(msg_len(99), b"00099"[..]);
+        assert_eq!(msg_len(101), b"00101"[..]);
+        assert_eq!(msg_len(123), b"00123"[..]);
+        assert_eq!(msg_len(255), b"00255"[..]);
+        assert_eq!(msg_len(256), b"00256"[..]);
+        assert_eq!(msg_len(678), b"00678"[..]);
+        assert_eq!(msg_len(987), b"00987"[..]);
+        assert_eq!(msg_len(1024), b"01024"[..]);
+        assert_eq!(msg_len(2048), b"02048"[..]);
+        assert_eq!(msg_len(4096), b"04096"[..]);
+        assert_eq!(msg_len(9876), b"09876"[..]);
+        assert_eq!(msg_len(10240), b"10240"[..]);
+        assert_eq!(msg_len(98765), b"98765"[..]);
     }
 }
