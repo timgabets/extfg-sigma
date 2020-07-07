@@ -61,7 +61,7 @@ let s = r#"{
 }"#;
 
 // Deserializing request
-let req = SPRequest::new(s.as_bytes());
+let req = SigmaRequest::new(s.as_bytes());
 println!("{:?}", req);
 
 // Serializing request
