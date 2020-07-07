@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 mod util;
 
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 pub struct SigmaRequest {
     saf: String,
     source: String,
