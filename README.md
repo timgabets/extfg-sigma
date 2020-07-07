@@ -71,4 +71,21 @@ let msg : String = req.serialize().unwrap();
 s.write_all(&msg.as_bytes()).await?;
 ```
 
+```rust
+use extfg_sigma::{SigmaResponse};
+
+let s = b"0002501104007040978T\x00\x31\x00\x00\x048495";
+
+let resp = SigmaResponse::new(s);
+assert_eq!(resp.mti, "0110");
+assert_eq!(resp.auth_serno, 4007040978);
+assert_eq!(resp.reason, 8495);
+
+let serialized = resp.serialize().unwrap();
+assert_eq!(
+    serialized,
+    r#"{"mti":"0110","auth_serno":4007040978,"reason":8495}"#
+);
+```
+
 Check [lakgves](https://github.com/timgabets/lakgves) for more examples.

@@ -1,4 +1,5 @@
 use crate::util::{msg_len, serialize_tag, TagType};
+use serde::Serialize;
 use serde_json::Value;
 use std::io;
 
@@ -184,6 +185,41 @@ impl SigmaRequest {
         serialized.put(buf);
 
         Ok(serialized.split())
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct SigmaResponse {
+    mti: String,
+    auth_serno: i64,
+    reason: i32,
+    // TODO: Fees
+}
+
+impl SigmaResponse {
+    pub fn new(s: &[u8]) -> Self {
+        println!("{:?}", s.len());
+        let mti = &s[5..9];
+        let auth_serno = match String::from_utf8_lossy(&s[9..19]).parse() {
+            Ok(r) => r,
+            Err(_) => -1,
+        };
+        let reason = match String::from_utf8_lossy(&s[25..29]).parse() {
+            Ok(r) => r,
+            Err(_) => -1,
+        };
+
+        let resp = SigmaResponse {
+            mti: String::from_utf8_lossy(mti).to_string(),
+            auth_serno: auth_serno,
+            reason: reason,
+        };
+        resp
+    }
+
+    pub fn serialize(&self) -> Result<String, serde_json::error::Error> {
+        let serialized = serde_json::to_string(&self)?;
+        Ok(serialized)
     }
 }
 
@@ -421,6 +457,7 @@ mod tests {
             "Should generate authorization serno if the field is missing"
         );
     }
+
     #[test]
     fn serializing_ok() {
         let payload = r#"{
@@ -474,6 +511,70 @@ mod tests {
         assert_eq!(
             serialized,
             b"00536YM02006007040979T\x00\x00\x00\x00\x132371492071643T\x00\x01\x00\x00\x01CT\x00\x02\x00\x00\x03643T\x00\x03\x00\x00\x12000100000000T\x00\x04\x00\x00\x03978T\x00\x05\x00\x00\x12000300000000T\x00\x06\x00\x00\x04OPS6T\x00\x07\x00\x00\x0219T\x00\x08\x00\x00\x03643T\x00\t\x00\x00\x043102T\x00\x10\x00\x00\x043104T\x00\x11\x00\x00\x012T\x00\x14\x00\x00\x10IDDQD BankT\x00\x16\x00\x00\x0874707182T\x00\x18\x00\x00\x01YT\x00\x22\x00\x00\x12000000000010I\x00\x00\x00\x00\x040100I\x00\x02\x00\x00\x16555544******1111I\x00\x03\x00\x00\x06500000I\x00\x04\x00\x00\x12000100000000I\x00\x06\x00\x00\x12000100000000I\x00\x07\x00\x00\x100629151748I\x00\x11\x00\x00\x06100250I\x00\x12\x00\x00\x06181748I\x00\x13\x00\x00\x040629I\x00\x18\x00\x00\x040000I\x00\"\x00\x00\x040000I\x00%\x00\x00\x0202I\x002\x00\x00\x06010455I\x007\x00\x00\x12002595100250I\x00A\x00\x00\x03990I\x00B\x00\x00\x04DCZ1I\x00C\x00\x008IDDQD Bank.                         GEI\x00H\x00\x00\x16USRDT|2595100250I\x00I\x00\x00\x03643I\x00Q\x00\x00\x03643I\x00`\x00\x00\x013I\x01\x01\x00\x00\x0891926242I\x01\x02\x00\x00\x132371492071643"[..]
+        );
+    }
+
+    #[test]
+    fn sigma_response_new() {
+        let s = b"0002501104007040978T\x00\x31\x00\x00\x048495";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, 8495);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8495}"#
+        );
+    }
+
+    #[test]
+    fn sigma_response_incorrect_auth_serno() {
+        let s = b"000250110XYZ7040978T\x00\x31\x00\x00\x048100";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, -1);
+        assert_eq!(resp.reason, 8100);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":-1,"reason":8100}"#
+        );
+    }
+
+    #[test]
+    fn sigma_response_incorrect_reason() {
+        let s = b"0002501104007040978T\x00\x31\x00\x00\x04ABCD";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, -1);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":-1}"#
+        );
+    }
+
+    #[test]
+    fn sigma_response_fee_data() {
+        let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, 8100);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100}"#
         );
     }
 }
