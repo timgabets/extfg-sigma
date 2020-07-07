@@ -161,7 +161,14 @@ impl SigmaRequest {
         buf.put(self.saf.as_bytes());
         buf.put(self.source.as_bytes());
         buf.put(self.mti.as_bytes());
-        buf.put(format!("{}", self.auth_serno).as_bytes());
+        let mut auth_serno = self.auth_serno.to_string();
+        if auth_serno.len() > 10 {
+            auth_serno.truncate(10);
+        } else {
+            auth_serno = format!("{:010}", auth_serno);
+        }
+
+        buf.put(format!("{}", auth_serno).as_bytes());
 
         for key in self.tags.keys() {
             buf.put(serialize_tag(
@@ -455,6 +462,24 @@ mod tests {
         assert!(
             r.auth_serno > 0,
             "Should generate authorization serno if the field is missing"
+        );
+    }
+
+    #[test]
+    fn serializing_generated_auth_serno() {
+        let payload = r#"{
+                "SAF": "Y",
+                "SRC": "M",
+                "MTI": "0201",
+                "Serno": 7877706965687192023
+            }"#;
+
+        let r: SigmaRequest = SigmaRequest::new(serde_json::from_str(&payload).unwrap()).unwrap();
+        let serialized = r.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            b"00016YM02017877706965"[..],
+            "Original auth serno should be trimmed to 10 bytes"
         );
     }
 
