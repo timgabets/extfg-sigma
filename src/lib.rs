@@ -112,8 +112,8 @@ impl SigmaRequest {
         // Tags
         for i in 0..23 {
             let id = format!("T{:04}", i);
-            match data.get(id) {
-                Some(tag) => match tag.as_str() {
+            if let Some(tag) = data.get(id) {
+                match tag.as_str() {
                     Some(v) => {
                         req.tags.insert(i, v.to_string());
                     }
@@ -126,16 +126,15 @@ impl SigmaRequest {
                             return Err(io::ErrorKind::InvalidData);
                         }
                     },
-                },
-                None => {}
+                }
             }
         }
 
         // ISO Fields
         for i in 0..128 {
             let id = format!("i{:03}", i);
-            match data.get(id) {
-                Some(tag) => match tag.as_str() {
+            if let Some(tag) = data.get(id) {
+                match tag.as_str() {
                     Some(v) => {
                         req.iso_fields.insert(i, v.to_string());
                     }
@@ -148,8 +147,7 @@ impl SigmaRequest {
                             return Err(io::ErrorKind::InvalidData);
                         }
                     },
-                },
-                None => {}
+                }
             }
         }
 
@@ -168,7 +166,7 @@ impl SigmaRequest {
             auth_serno = format!("{:010}", auth_serno);
         }
 
-        buf.put(format!("{}", auth_serno).as_bytes());
+        buf.put(auth_serno.as_bytes());
 
         for key in self.tags.keys() {
             buf.put(serialize_tag(
@@ -207,21 +205,25 @@ impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
         println!("{:?}", s.len());
         let mti = &s[5..9];
-        let auth_serno = match String::from_utf8_lossy(&s[9..19]).parse() {
-            Ok(r) => r,
-            Err(_) => -1,
+        let auth_serno = match String::from_utf8_lossy(&s[9..19])
+            .split_whitespace()
+            .map(|s| s.parse::<i64>())
+            .next()
+        {
+            Some(Ok(r)) => r,
+            Some(Err(_)) => -1,
+            None => -1,
         };
         let reason = match String::from_utf8_lossy(&s[25..29]).parse() {
             Ok(r) => r,
             Err(_) => -1,
         };
 
-        let resp = SigmaResponse {
+        SigmaResponse {
             mti: String::from_utf8_lossy(mti).to_string(),
-            auth_serno: auth_serno,
-            reason: reason,
-        };
-        resp
+            auth_serno,
+            reason,
+        }
     }
 
     pub fn serialize(&self) -> Result<String, serde_json::error::Error> {
@@ -300,36 +302,31 @@ mod tests {
         assert_eq!(r.tags.get(&10).unwrap(), "3104");
         assert_eq!(r.tags.get(&11).unwrap(), "2");
 
-        match r.tags.get(&12) {
-            Some(_) => assert!(false),
-            None => assert!(true),
+        if r.tags.get(&12).is_some() {
+            unreachable!();
         }
 
-        match r.tags.get(&13) {
-            Some(_) => assert!(false),
-            None => assert!(true),
+        if r.tags.get(&13).is_some() {
+            unreachable!();
         }
 
         assert_eq!(r.tags.get(&14).unwrap(), "IDDQD Bank");
 
-        match r.tags.get(&15) {
-            Some(_) => assert!(false),
-            None => assert!(true),
+        if r.tags.get(&15).is_some() {
+            unreachable!();
         }
 
         assert_eq!(r.tags.get(&16).unwrap(), "74707182");
-        match r.tags.get(&17) {
-            Some(_) => assert!(false),
-            None => assert!(true),
+        if r.tags.get(&17).is_some() {
+            unreachable!();
         }
         assert_eq!(r.tags.get(&18).unwrap(), "Y");
         assert_eq!(r.tags.get(&22).unwrap(), "000000000010");
 
         assert_eq!(r.iso_fields.get(&0).unwrap(), "0100");
 
-        match r.iso_fields.get(&1) {
-            Some(_) => assert!(false),
-            None => assert!(true),
+        if r.iso_fields.get(&1).is_some() {
+            unreachable!();
         }
 
         assert_eq!(r.iso_fields.get(&2).unwrap(), "555544******1111");
@@ -366,9 +363,8 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(false, "Should not return Ok if mandatory field is missing"),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
 
@@ -380,12 +376,8 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(
-                false,
-                "Should not return Ok if the filed has invalid format"
-            ),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
 
@@ -396,9 +388,8 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(false, "Should not return Ok if mandatory field is missing"),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
 
@@ -410,12 +401,8 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(
-                false,
-                "Should not return Ok if the filed has invalid format"
-            ),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
 
@@ -426,9 +413,8 @@ mod tests {
         	"SRC": "O"
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(false, "Should not return Ok if mandatory field is missing"),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
 
@@ -440,12 +426,8 @@ mod tests {
             "MTI": 1200
         }"#;
 
-        match SigmaRequest::new(serde_json::from_str(&payload).unwrap()) {
-            Ok(_) => assert!(
-                false,
-                "Should not return Ok if the filed has invalid format"
-            ),
-            Err(_) => assert!(true),
+        if SigmaRequest::new(serde_json::from_str(&payload).unwrap()).is_ok() {
+            unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
 
@@ -600,6 +582,22 @@ mod tests {
         assert_eq!(
             serialized,
             r#"{"mti":"0110","auth_serno":4007040978,"reason":8100}"#
+        );
+    }
+
+    #[test]
+    fn sigma_response_correct_short_auth_serno() {
+        let s = b"000400110123123    T\x00\x31\x00\x00\x048100";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 123123);
+        assert_eq!(resp.reason, 8100);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":123123,"reason":8100}"#
         );
     }
 }
