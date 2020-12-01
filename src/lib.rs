@@ -92,16 +92,25 @@ impl SigmaRequest {
         // Authorization serno
         f = "Serno";
         match data.get(f) {
-            Some(opt) => match opt.as_u64() {
+            Some(opt) => match opt.as_str() {
                 Some(v) => {
-                    req.auth_serno = v;
+                    req.auth_serno = v.parse::<u64>().unwrap();
                 }
                 None => {
-                    println!(
-                        "Incoming request has invalid {} field data format - should be u64",
-                        f
-                    );
-                    return Err(io::ErrorKind::InvalidData);
+                    // Not a string
+                    match opt.as_u64() {
+                        Some(v) => {
+                            req.auth_serno = v;
+                        }
+                        None => {
+                            // Neither a string nor a u64
+                            println!(
+                                "Incoming request has invalid {} field data format - should be u64 ot string",
+                                f
+                            );
+                            return Err(io::ErrorKind::InvalidData);
+                        }
+                    }
                 }
             },
             None => {
@@ -289,6 +298,126 @@ mod tests {
         assert_eq!(r.source, "M");
         assert_eq!(r.mti, "0200");
         assert_eq!(r.auth_serno, 6007040979);
+        assert_eq!(r.tags.get(&0).unwrap(), "2371492071643");
+        assert_eq!(r.tags.get(&1).unwrap(), "C");
+        assert_eq!(r.tags.get(&2).unwrap(), "643");
+        assert_eq!(r.tags.get(&3).unwrap(), "000100000000");
+        assert_eq!(r.tags.get(&4).unwrap(), "978");
+        assert_eq!(r.tags.get(&5).unwrap(), "000300000000");
+        assert_eq!(r.tags.get(&6).unwrap(), "OPS6");
+        assert_eq!(r.tags.get(&7).unwrap(), "19");
+        assert_eq!(r.tags.get(&8).unwrap(), "643");
+        assert_eq!(r.tags.get(&9).unwrap(), "3102");
+        assert_eq!(r.tags.get(&10).unwrap(), "3104");
+        assert_eq!(r.tags.get(&11).unwrap(), "2");
+
+        if r.tags.get(&12).is_some() {
+            unreachable!();
+        }
+
+        if r.tags.get(&13).is_some() {
+            unreachable!();
+        }
+
+        assert_eq!(r.tags.get(&14).unwrap(), "IDDQD Bank");
+
+        if r.tags.get(&15).is_some() {
+            unreachable!();
+        }
+
+        assert_eq!(r.tags.get(&16).unwrap(), "74707182");
+        if r.tags.get(&17).is_some() {
+            unreachable!();
+        }
+        assert_eq!(r.tags.get(&18).unwrap(), "Y");
+        assert_eq!(r.tags.get(&22).unwrap(), "000000000010");
+
+        assert_eq!(r.iso_fields.get(&0).unwrap(), "0100");
+
+        if r.iso_fields.get(&1).is_some() {
+            unreachable!();
+        }
+
+        assert_eq!(r.iso_fields.get(&2).unwrap(), "555544******1111");
+        assert_eq!(r.iso_fields.get(&3).unwrap(), "500000");
+        assert_eq!(r.iso_fields.get(&4).unwrap(), "000100000000");
+        assert_eq!(r.iso_fields.get(&6).unwrap(), "000100000000");
+        assert_eq!(r.iso_fields.get(&7).unwrap(), "0629151748");
+        assert_eq!(r.iso_fields.get(&11).unwrap(), "100250");
+        assert_eq!(r.iso_fields.get(&12).unwrap(), "181748");
+        assert_eq!(r.iso_fields.get(&13).unwrap(), "0629");
+        assert_eq!(r.iso_fields.get(&18).unwrap(), "0000");
+        assert_eq!(r.iso_fields.get(&22).unwrap(), "0000");
+        assert_eq!(r.iso_fields.get(&25).unwrap(), "02");
+        assert_eq!(r.iso_fields.get(&32).unwrap(), "010455");
+        assert_eq!(r.iso_fields.get(&37).unwrap(), "002595100250");
+        assert_eq!(r.iso_fields.get(&41).unwrap(), "990");
+        assert_eq!(r.iso_fields.get(&42).unwrap(), "DCZ1");
+        assert_eq!(
+            r.iso_fields.get(&43).unwrap(),
+            "IDDQD Bank.                         GE"
+        );
+        assert_eq!(r.iso_fields.get(&48).unwrap(), "USRDT|2595100250");
+        assert_eq!(r.iso_fields.get(&49).unwrap(), "643");
+        assert_eq!(r.iso_fields.get(&51).unwrap(), "643");
+        assert_eq!(r.iso_fields.get(&60).unwrap(), "3");
+        assert_eq!(r.iso_fields.get(&101).unwrap(), "91926242");
+        assert_eq!(r.iso_fields.get(&102).unwrap(), "2371492071643");
+    }
+
+    #[test]
+    fn serno_as_string() {
+        let payload = r#"{
+            "SAF": "Y",
+            "SRC": "M",
+            "MTI": "0200",
+            "Serno": "0600704097",
+            "T0000": 2371492071643,
+            "T0001": "C",
+            "T0002": 643,
+            "T0003": "000100000000",
+            "T0004": 978,
+            "T0005": "000300000000",
+            "T0006": "OPS6",
+            "T0007": 19,
+            "T0008": 643,
+            "T0009": 3102,
+            "T0010": 3104,
+            "T0011": 2,
+            "T0014": "IDDQD Bank",
+            "T0016": 74707182,
+            "T0018": "Y",
+            "T0022": "000000000010",
+            "i000": "0100",
+            "i002": "555544******1111",
+            "i003": "500000",
+            "i004": "000100000000",
+            "i006": "000100000000",
+            "i007": "0629151748",
+            "i011": "100250",
+            "i012": "181748",
+            "i013": "0629",
+            "i018": "0000",
+            "i022": "0000",
+            "i025": "02",
+            "i032": "010455",
+            "i037": "002595100250",
+            "i041": 990,
+            "i042": "DCZ1",
+            "i043": "IDDQD Bank.                         GE",
+            "i048": "USRDT|2595100250",
+            "i049": 643,
+            "i051": 643,
+            "i060": 3,
+            "i101": 91926242,
+            "i102": 2371492071643
+        }"#;
+
+        let r: SigmaRequest = SigmaRequest::new(serde_json::from_str(&payload).unwrap()).unwrap();
+        assert_eq!(r.saf, "Y");
+        assert_eq!(r.source, "M");
+        assert_eq!(r.mti, "0200");
+        assert_eq!(r.auth_serno, 600704097);
         assert_eq!(r.tags.get(&0).unwrap(), "2371492071643");
         assert_eq!(r.tags.get(&1).unwrap(), "C");
         assert_eq!(r.tags.get(&2).unwrap(), "643");
