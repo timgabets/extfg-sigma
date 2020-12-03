@@ -253,8 +253,35 @@ pub struct SigmaResponse {
 
 impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
-        let mti = &s[5..9];
-        let auth_serno = match String::from_utf8_lossy(&s[9..19])
+        let mut from: usize = 0;
+        let mut to: usize = 5;
+        let data_len = match String::from_utf8_lossy(&s[from..to]).parse() {
+            Ok(r) => r,
+            Err(_) => 0,
+        };
+
+        from = 5;
+        to = 9;
+        if data_len < from || data_len < from {
+            println!(
+                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
+                data_len, from, to
+            );
+            // TODO: exit or something
+        }
+
+        let mti = &s[from..to];
+
+        from = 9;
+        to = 19;
+        if data_len < from || data_len < from {
+            println!(
+                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
+                data_len, from, to
+            );
+            // TODO: exit or something
+        }
+        let auth_serno = match String::from_utf8_lossy(&s[from..to])
             .split_whitespace()
             .map(|s| s.parse::<i64>())
             .next()
@@ -263,7 +290,21 @@ impl SigmaResponse {
             Some(Err(_)) => -1,
             None => -1,
         };
-        let reason = match String::from_utf8_lossy(&s[25..29]).parse() {
+
+        from = 25;
+        to = 29;
+        if data_len < from || data_len < from {
+            println!(
+                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
+                data_len, from, to
+            );
+            // TODO: exit or something
+        }
+
+        // let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
+        // 01104007040978T.....8100T.....8116978300
+
+        let reason = match String::from_utf8_lossy(&s[from..to]).parse() {
             Ok(r) => r,
             Err(_) => -1,
         };
