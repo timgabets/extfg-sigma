@@ -203,6 +203,47 @@ impl SigmaRequest {
 }
 
 #[derive(Serialize, Debug)]
+pub struct FeeData {
+    reason: i32,
+    currency: i32,
+    amount: i64,
+}
+
+impl FeeData {
+    pub fn new(data: &[u8], data_len: usize) -> Self {
+        let mut reason = -1;
+        let mut currency = -1;
+        let mut amount = -1;
+
+        if data_len >= 8 {
+            // "\x00\x32\x00\x00\x108116978300"
+            reason = match String::from_utf8_lossy(&data[0..4]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+
+            currency = match String::from_utf8_lossy(&data[4..7]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+
+            amount = match String::from_utf8_lossy(&data[7..data_len]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+        } else {
+            println!("FeeData length error: {:?}", data_len);
+        };
+
+        FeeData {
+            reason,
+            currency,
+            amount,
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
 pub struct SigmaResponse {
     mti: String,
     auth_serno: i64,
@@ -212,7 +253,6 @@ pub struct SigmaResponse {
 
 impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
-        println!("{:?}", s.len());
         let mti = &s[5..9];
         let auth_serno = match String::from_utf8_lossy(&s[9..19])
             .split_whitespace()
@@ -728,5 +768,25 @@ mod tests {
             serialized,
             r#"{"mti":"0110","auth_serno":123123,"reason":8100}"#
         );
+    }
+
+    #[test]
+    fn fee_data() {
+        let data = b"8116978300";
+
+        let fee = FeeData::new(data, 10);
+        assert_eq!(fee.reason, 8116);
+        assert_eq!(fee.currency, 978);
+        assert_eq!(fee.amount, 300);
+    }
+
+    #[test]
+    fn fee_data_large_amount() {
+        let data = b"8116643123456789";
+
+        let fee = FeeData::new(data, 16);
+        assert_eq!(fee.reason, 8116);
+        assert_eq!(fee.currency, 643);
+        assert_eq!(fee.amount, 123456789);
     }
 }
