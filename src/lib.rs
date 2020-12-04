@@ -248,11 +248,13 @@ pub struct SigmaResponse {
     mti: String,
     auth_serno: i64,
     reason: i32,
-    // TODO: Fees
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fees: Vec<FeeData>,
 }
 
 impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
+        let mut fees = Vec::new();
         let mut reason = -1;
 
         let mut from: usize = 0;
@@ -322,16 +324,17 @@ impl SigmaResponse {
                 };
             }
 
-            //if &s[tag_id_start..tag_id_end] == b"T\x00\x32\x00" {
-            //    // Tag T0032
-            //    let _ = FeeData::new(&s[tag_data_start..tag_data_end], tag_data_len as usize);
-            //}
+            if tag_id == 32 {
+                let fee = FeeData::new(&s[tag_data_start..tag_data_end], tag_data_len as usize);
+                fees.push(fee)
+            }
         }
 
         SigmaResponse {
             mti,
             auth_serno,
             reason,
+            fees,
         }
     }
 
@@ -810,7 +813,7 @@ mod tests {
         let serialized = resp.serialize().unwrap();
         assert_eq!(
             serialized,
-            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100}"#
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":978,"amount":300}]}"#
         );
     }
 
