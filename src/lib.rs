@@ -273,7 +273,7 @@ impl SigmaResponse {
             // TODO: exit or something
         }
 
-        let mti = &s[from..to];
+        let mti = String::from_utf8_lossy(&s[from..to]).to_string();
 
         from = 9;
         to = from + 10;
@@ -330,7 +330,7 @@ impl SigmaResponse {
         }
 
         SigmaResponse {
-            mti: String::from_utf8_lossy(mti).to_string(),
+            mti,
             auth_serno,
             reason,
         }
@@ -817,7 +817,7 @@ mod tests {
 
     #[test]
     fn sigma_response_correct_short_auth_serno() {
-        let s = b"000400110123123    T\x00\x31\x00\x00\x048100";
+        let s = b"000240110123123    T\x00\x31\x00\x00\x048100";
 
         let resp = SigmaResponse::new(s);
         assert_eq!(resp.mti, "0110");
