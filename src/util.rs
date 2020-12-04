@@ -16,7 +16,7 @@ fn pop(x: &[u8]) -> &[u8; 2] {
 }
 
 #[rustfmt::skip]
-fn bcd2u16(x: &[u8]) -> u16 {
+pub fn bcd2u16(x: &[u8]) -> u16 {
     let bcd_table = [
          0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 0, 0, 0, 0, 0, 0,
         10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 0, 0, 0, 0, 0, 0,
@@ -31,7 +31,10 @@ fn bcd2u16(x: &[u8]) -> u16 {
     ];
     let index: usize = u16::from_be_bytes(*pop(&x[0..2])) as usize;
     if index < bcd_table.len() {
+        /* Values less than 0x99 */
         return bcd_table[index];
+    } else if index >= 0x100 {
+        /* TODO: Values largen than than 0x100 */
     }
     0
 }
@@ -135,6 +138,11 @@ mod tests {
         assert_eq!(bcd2u16(b"\x00\x76"), 76);
         assert_eq!(bcd2u16(b"\x00\x87"), 87);
         assert_eq!(bcd2u16(b"\x00\x99"), 99);
+        assert_eq!(
+            bcd2u16(b"\x01\x00"),
+            0,
+            "Values larger than 0x100 are not yet implemented"
+        );
     }
 
     #[test]

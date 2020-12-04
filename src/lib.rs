@@ -244,10 +244,6 @@ impl FeeData {
     }
 }
 
-fn pop(x: &[u8]) -> &[u8; 2] {
-    x.try_into().expect("slice with incorrect length")
-}
-
 #[derive(Serialize, Debug)]
 pub struct SigmaResponse {
     mti: String,
@@ -262,17 +258,17 @@ impl SigmaResponse {
 
         let mut from: usize = 0;
         let mut to: usize = 5;
-        let data_len = match String::from_utf8_lossy(&s[from..to]).parse::<usize>() {
+        let msg_data_len = match String::from_utf8_lossy(&s[from..to]).parse::<usize>() {
             Ok(r) => r + 5,
             Err(_) => 0,
         };
 
         from = 5;
         to = 9;
-        if data_len < from || data_len < from {
+        if msg_data_len < from || msg_data_len < from {
             println!(
                 "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
-                data_len, from, to
+                msg_data_len, from, to
             );
             // TODO: exit or something
         }
@@ -280,11 +276,11 @@ impl SigmaResponse {
         let mti = &s[from..to];
 
         from = 9;
-        to = 19;
-        if data_len < from || data_len < from {
+        to = from + 10;
+        if msg_data_len < from || msg_data_len < from {
             println!(
                 "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
-                data_len, from, to
+                msg_data_len, from, to
             );
             // TODO: exit or something
         }
@@ -300,20 +296,37 @@ impl SigmaResponse {
 
         // let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
         // 01104007040978T.....8100T.....8116978300
-        let indx = 19;
-        let tag_start = indx;
-        let tag_end = tag_start + 4;
-        if &s[tag_start..tag_end] == b"T\x00\x31\x00" {
-            // Tag T0031
 
-            let tag_data_len = u16::from_be_bytes(*pop(&s[tag_end..tag_end + 2]));
-            let tag_data_start = tag_end + 2;
+        let mut cursor = to;
+        while cursor < msg_data_len {
+            /*
+             *  cursor
+             *  |
+             *  |  T  | \x00 | \x31 | \x00 | \x00 | \x04 |  8  |  1  |  0  |  0  |
+             *        |             |      |             |                       |
+             *        |__ tag id ___|      |tag data len |_______ data __________|
+             */
+            let tag_id_start = cursor + 1;
+            let tag_id_end = tag_id_start + 2;
+
+            let tag_id: u16 = util::bcd2u16(&s[tag_id_start..tag_id_end + 2]);
+
+            let tag_data_len = util::bcd2u16(&s[tag_id_end + 1..tag_id_end + 3]);
+            let tag_data_start = tag_id_end + 1 + 2;
             let tag_data_end = tag_data_start + tag_data_len as usize;
+            cursor = tag_data_end;
 
-            reason = match String::from_utf8_lossy(&s[tag_data_start..tag_data_end]).parse() {
-                Ok(r) => r,
-                Err(_) => -1,
-            };
+            if tag_id == 31 {
+                reason = match String::from_utf8_lossy(&s[tag_data_start..tag_data_end]).parse() {
+                    Ok(r) => r,
+                    Err(_) => -1,
+                };
+            }
+
+            //if &s[tag_id_start..tag_id_end] == b"T\x00\x32\x00" {
+            //    // Tag T0032
+            //    let _ = FeeData::new(&s[tag_data_start..tag_data_end], tag_data_len as usize);
+            //}
         }
 
         SigmaResponse {
