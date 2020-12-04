@@ -1,7 +1,6 @@
 use crate::util::{msg_len, serialize_tag, TagType};
 use serde::Serialize;
 use serde_json::Value;
-use std::convert::TryInto;
 use std::io;
 
 use bytes::{BufMut, BytesMut};
