@@ -852,4 +852,20 @@ mod tests {
         assert_eq!(fee.currency, 643);
         assert_eq!(fee.amount, 123456789);
     }
+
+    #[test]
+    fn sigma_response_fee_data_additional_data() {
+        let s = b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=";
+
+        let resp = SigmaResponse::new(s);
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, 8100);
+
+        let serialized = resp.serialize().unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}]}"#
+        );
+    }
 }

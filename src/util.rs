@@ -34,7 +34,9 @@ pub fn bcd2u16(x: &[u8]) -> u16 {
         /* Values less than 0x99 */
         return bcd_table[index];
     } else if index >= 0x100 {
-        /* TODO: Values largen than than 0x100 */
+        let msb : usize = (index/0x100) as usize;
+        let lsb = index % 0x100;
+        return bcd_table[msb] * 100 + bcd_table[lsb];
     }
     0
 }
@@ -138,11 +140,13 @@ mod tests {
         assert_eq!(bcd2u16(b"\x00\x76"), 76);
         assert_eq!(bcd2u16(b"\x00\x87"), 87);
         assert_eq!(bcd2u16(b"\x00\x99"), 99);
-        assert_eq!(
-            bcd2u16(b"\x01\x00"),
-            0,
-            "Values larger than 0x100 are not yet implemented"
-        );
+        assert_eq!(bcd2u16(b"\x01\x05"), 105);
+        assert_eq!(bcd2u16(b"\x01\x37"), 137);
+        assert_eq!(bcd2u16(b"\x02\x93"), 293);
+        assert_eq!(bcd2u16(b"\x03\x60"), 360);
+        assert_eq!(bcd2u16(b"\x12\x34"), 1234);
+        assert_eq!(bcd2u16(b"\x56\x78"), 5678);
+        assert_eq!(bcd2u16(b"\x99\x99"), 9999);
     }
 
     #[test]
