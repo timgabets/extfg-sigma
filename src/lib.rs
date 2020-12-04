@@ -298,7 +298,7 @@ impl SigmaResponse {
         // 01104007040978T.....8100T.....8116978300
 
         let mut cursor = to;
-        while cursor < msg_data_len {
+        while (cursor + 1) < msg_data_len {
             /*
              *  cursor
              *  |
