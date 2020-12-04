@@ -1,6 +1,7 @@
 use crate::util::{msg_len, serialize_tag, TagType};
 use serde::Serialize;
 use serde_json::Value;
+use std::convert::TryInto;
 use std::io;
 
 use bytes::{BufMut, BytesMut};
@@ -243,6 +244,10 @@ impl FeeData {
     }
 }
 
+fn pop(x: &[u8]) -> &[u8; 2] {
+    x.try_into().expect("slice with incorrect length")
+}
+
 #[derive(Serialize, Debug)]
 pub struct SigmaResponse {
     mti: String,
@@ -253,10 +258,12 @@ pub struct SigmaResponse {
 
 impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
+        let mut reason = -1;
+
         let mut from: usize = 0;
         let mut to: usize = 5;
-        let data_len = match String::from_utf8_lossy(&s[from..to]).parse() {
-            Ok(r) => r,
+        let data_len = match String::from_utf8_lossy(&s[from..to]).parse::<usize>() {
+            Ok(r) => r + 5,
             Err(_) => 0,
         };
 
@@ -291,23 +298,23 @@ impl SigmaResponse {
             None => -1,
         };
 
-        from = 25;
-        to = 29;
-        if data_len < from || data_len < from {
-            println!(
-                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
-                data_len, from, to
-            );
-            // TODO: exit or something
-        }
-
         // let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
         // 01104007040978T.....8100T.....8116978300
+        let indx = 19;
+        let tag_start = indx;
+        let tag_end = tag_start + 4;
+        if &s[tag_start..tag_end] == b"T\x00\x31\x00" {
+            // Tag T0031
 
-        let reason = match String::from_utf8_lossy(&s[from..to]).parse() {
-            Ok(r) => r,
-            Err(_) => -1,
-        };
+            let tag_data_len = u16::from_be_bytes(*pop(&s[tag_end..tag_end + 2]));
+            let tag_data_start = tag_end + 2;
+            let tag_data_end = tag_data_start + tag_data_len as usize;
+
+            reason = match String::from_utf8_lossy(&s[tag_data_start..tag_data_end]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+        }
 
         SigmaResponse {
             mti: String::from_utf8_lossy(mti).to_string(),
