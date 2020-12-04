@@ -203,18 +203,89 @@ impl SigmaRequest {
 }
 
 #[derive(Serialize, Debug)]
+pub struct FeeData {
+    reason: i32,
+    currency: i32,
+    amount: i64,
+}
+
+impl FeeData {
+    pub fn new(data: &[u8], data_len: usize) -> Self {
+        let mut reason = -1;
+        let mut currency = -1;
+        let mut amount = -1;
+
+        if data_len >= 8 {
+            // "\x00\x32\x00\x00\x108116978300"
+            reason = match String::from_utf8_lossy(&data[0..4]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+
+            currency = match String::from_utf8_lossy(&data[4..7]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+
+            amount = match String::from_utf8_lossy(&data[7..data_len]).parse() {
+                Ok(r) => r,
+                Err(_) => -1,
+            };
+        } else {
+            println!("FeeData length error: {:?}", data_len);
+        };
+
+        FeeData {
+            reason,
+            currency,
+            amount,
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
 pub struct SigmaResponse {
     mti: String,
     auth_serno: i64,
     reason: i32,
-    // TODO: Fees
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fees: Vec<FeeData>,
 }
 
 impl SigmaResponse {
     pub fn new(s: &[u8]) -> Self {
-        println!("{:?}", s.len());
-        let mti = &s[5..9];
-        let auth_serno = match String::from_utf8_lossy(&s[9..19])
+        let mut fees = Vec::new();
+        let mut reason = -1;
+
+        let mut from: usize = 0;
+        let mut to: usize = 5;
+        let msg_data_len = match String::from_utf8_lossy(&s[from..to]).parse::<usize>() {
+            Ok(r) => r + 5,
+            Err(_) => 0,
+        };
+
+        from = 5;
+        to = 9;
+        if msg_data_len < from || msg_data_len < from {
+            println!(
+                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
+                msg_data_len, from, to
+            );
+            // TODO: exit or something
+        }
+
+        let mti = String::from_utf8_lossy(&s[from..to]).to_string();
+
+        from = 9;
+        to = from + 10;
+        if msg_data_len < from || msg_data_len < from {
+            println!(
+                "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
+                msg_data_len, from, to
+            );
+            // TODO: exit or something
+        }
+        let auth_serno = match String::from_utf8_lossy(&s[from..to])
             .split_whitespace()
             .map(|s| s.parse::<i64>())
             .next()
@@ -223,15 +294,47 @@ impl SigmaResponse {
             Some(Err(_)) => -1,
             None => -1,
         };
-        let reason = match String::from_utf8_lossy(&s[25..29]).parse() {
-            Ok(r) => r,
-            Err(_) => -1,
-        };
+
+        // let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
+        // 01104007040978T.....8100T.....8116978300
+
+        let mut cursor = to;
+        while (cursor + 1) < msg_data_len {
+            /*
+             *  cursor
+             *  |
+             *  |  T  | \x00 | \x31 | \x00 | \x00 | \x04 |  8  |  1  |  0  |  0  |
+             *        |             |      |             |                       |
+             *        |__ tag id ___|      |tag data len |_______ data __________|
+             */
+            let tag_id_start = cursor + 1;
+            let tag_id_end = tag_id_start + 2;
+
+            let tag_id: u16 = util::bcd2u16(&s[tag_id_start..tag_id_end + 2]);
+
+            let tag_data_len = util::bcd2u16(&s[tag_id_end + 1..tag_id_end + 3]);
+            let tag_data_start = tag_id_end + 1 + 2;
+            let tag_data_end = tag_data_start + tag_data_len as usize;
+            cursor = tag_data_end;
+
+            if tag_id == 31 {
+                reason = match String::from_utf8_lossy(&s[tag_data_start..tag_data_end]).parse() {
+                    Ok(r) => r,
+                    Err(_) => -1,
+                };
+            }
+
+            if tag_id == 32 {
+                let fee = FeeData::new(&s[tag_data_start..tag_data_end], tag_data_len as usize);
+                fees.push(fee)
+            }
+        }
 
         SigmaResponse {
-            mti: String::from_utf8_lossy(mti).to_string(),
+            mti,
             auth_serno,
             reason,
+            fees,
         }
     }
 
@@ -710,13 +813,13 @@ mod tests {
         let serialized = resp.serialize().unwrap();
         assert_eq!(
             serialized,
-            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100}"#
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":978,"amount":300}]}"#
         );
     }
 
     #[test]
     fn sigma_response_correct_short_auth_serno() {
-        let s = b"000400110123123    T\x00\x31\x00\x00\x048100";
+        let s = b"000240110123123    T\x00\x31\x00\x00\x048100";
 
         let resp = SigmaResponse::new(s);
         assert_eq!(resp.mti, "0110");
@@ -728,5 +831,25 @@ mod tests {
             serialized,
             r#"{"mti":"0110","auth_serno":123123,"reason":8100}"#
         );
+    }
+
+    #[test]
+    fn fee_data() {
+        let data = b"8116978300";
+
+        let fee = FeeData::new(data, 10);
+        assert_eq!(fee.reason, 8116);
+        assert_eq!(fee.currency, 978);
+        assert_eq!(fee.amount, 300);
+    }
+
+    #[test]
+    fn fee_data_large_amount() {
+        let data = b"8116643123456789";
+
+        let fee = FeeData::new(data, 16);
+        assert_eq!(fee.reason, 8116);
+        assert_eq!(fee.currency, 643);
+        assert_eq!(fee.amount, 123456789);
     }
 }
