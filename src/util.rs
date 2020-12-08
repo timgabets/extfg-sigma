@@ -16,6 +16,7 @@ fn pop(x: &[u8]) -> &[u8; 2] {
 }
 
 #[rustfmt::skip]
+/// Convert two-byte BCD representation to u16
 pub fn bcd2u16(x: &[u8]) -> u16 {
     let bcd_table = [
          0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 0, 0, 0, 0, 0, 0,

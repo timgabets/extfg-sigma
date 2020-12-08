@@ -298,9 +298,6 @@ impl SigmaResponse {
             None => -1,
         };
 
-        // let s = b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300";
-        // 01104007040978T.....8100T.....8116978300
-
         let mut cursor = to;
         while (cursor + 1) < msg_data_len {
             /*
@@ -313,9 +310,9 @@ impl SigmaResponse {
             let tag_id_start = cursor + 1;
             let tag_id_end = tag_id_start + 2;
 
-            let tag_id: u16 = util::bcd2u16(&s[tag_id_start..tag_id_end + 2]);
+            let tag_id: u16 = util::bcd2u16(&s[tag_id_start..]);
 
-            let tag_data_len = util::bcd2u16(&s[tag_id_end + 1..tag_id_end + 3]);
+            let tag_data_len = util::bcd2u16(&s[tag_id_end + 1..]);
             let tag_data_start = tag_id_end + 1 + 2;
             let tag_data_end = tag_data_start + tag_data_len as usize;
             cursor = tag_data_end;
