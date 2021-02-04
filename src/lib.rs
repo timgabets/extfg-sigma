@@ -217,20 +217,13 @@ impl FeeData {
 
         if data_len >= 8 {
             // "\x00\x32\x00\x00\x108116978300"
-            reason = match String::from_utf8_lossy(&data[0..4]).parse() {
-                Ok(r) => r,
-                Err(_) => -1,
-            };
+            reason = String::from_utf8_lossy(&data[0..4]).parse().unwrap_or(-1);
 
-            currency = match String::from_utf8_lossy(&data[4..7]).parse() {
-                Ok(r) => r,
-                Err(_) => -1,
-            };
+            currency = String::from_utf8_lossy(&data[4..7]).parse().unwrap_or(-1);
 
-            amount = match String::from_utf8_lossy(&data[7..data_len]).parse() {
-                Ok(r) => r,
-                Err(_) => -1,
-            };
+            amount = String::from_utf8_lossy(&data[7..data_len])
+                .parse()
+                .unwrap_or(-1);
         } else {
             println!("FeeData length error: {:?}", data_len);
         };
@@ -269,7 +262,7 @@ impl SigmaResponse {
 
         from = 5;
         to = 9;
-        if msg_data_len < from || msg_data_len < from {
+        if msg_data_len < from || msg_data_len > to {
             println!(
                 "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
                 msg_data_len, from, to
@@ -281,7 +274,7 @@ impl SigmaResponse {
 
         from = 9;
         to = from + 10;
-        if msg_data_len < from || msg_data_len < from {
+        if msg_data_len < from || msg_data_len > to {
             println!(
                 "Out of boundaries error: data length is {:?}, but trying to access [{:?}..{:?}]",
                 msg_data_len, from, to
@@ -321,10 +314,9 @@ impl SigmaResponse {
             cursor = tag_data_end;
 
             if tag_id == 31 {
-                reason = match String::from_utf8_lossy(&s[tag_data_start..tag_data_end]).parse() {
-                    Ok(r) => r,
-                    Err(_) => -1,
-                };
+                reason = String::from_utf8_lossy(&s[tag_data_start..tag_data_end])
+                    .parse()
+                    .unwrap_or(-1)
             }
 
             if tag_id == 32 {
