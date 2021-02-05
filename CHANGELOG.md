@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2021-02-05
+### Added
+- `Error` type.
+- New methods for `SigmaRequest`/`SigmaResponse` for constructing this types and accessing their fields.
+### Changed
+- Most of the functions/methods now return `Error` instead of logging and returning `0`/`-1`.
+- Renamed some methods of `SigmaRequest`/`SigmaResponse`.
+
 ## [0.1.8] - 2020-12-07
 ### Added
 - Tag 0048 "Additional data" support.

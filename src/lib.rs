@@ -10,8 +10,6 @@ use crate::util::*;
 #[macro_use]
 mod util;
 
-// TODO: validate mandatory fields
-
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum Error {
     #[error("{0}")]
@@ -38,11 +36,58 @@ impl Error {
     }
 }
 
+fn bytes_split_to(bytes: &mut Bytes, at: usize) -> Result<Bytes, Error> {
+    let len = bytes.len();
+
+    if len < at {
+        return Err(Error::Bounds(format!(
+            "split_to out of bounds: {:?} <= {:?}",
+            at,
+            bytes.len(),
+        )));
+    }
+
+    Ok(bytes.split_to(at))
+}
+
+fn validate_mti(s: &str) -> Result<(), Error> {
+    let b = s.as_bytes();
+    if b.len() != 4 {
+        return Err(Error::incorrect_field_data(
+            "MTI",
+            "4 digit number (string)",
+        ));
+    }
+    for x in b.iter() {
+        if !matches!(x, b'0'..=b'9') {
+            return Err(Error::incorrect_field_data(
+                "MTI",
+                "4 digit number (string)",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_source(s: &str) -> Result<(), Error> {
+    if s.len() != 1 {
+        return Err(Error::incorrect_field_data("SRC", "single ASCII char"));
+    }
+    Ok(())
+}
+
+fn validate_saf(s: &str) -> Result<(), Error> {
+    match s {
+        "Y" | "N" => Ok(()),
+        _ => Err(Error::incorrect_field_data("SAF", "char Y or N")),
+    }
+}
+
 #[derive(Serialize, Debug)]
 pub struct SigmaRequest {
-    pub saf: String,
-    pub source: String,
-    pub mti: String,
+    saf: String,
+    source: String,
+    mti: String,
     pub auth_serno: u64,
     pub tags: BTreeMap<u16, String>,
     pub iso_fields: BTreeMap<u16, String>,
@@ -73,7 +118,7 @@ impl SigmaRequest {
                 match data.remove($pname) {
                     Some(x) => match x.as_str() {
                         Some(v) => {
-                            req.$fname = v.to_string();
+                            req.$fname(v.to_string())?;
                         }
                         None => {
                             return Err(Error::IncorrectFieldData {
@@ -89,9 +134,9 @@ impl SigmaRequest {
             };
         }
 
-        fill_req_field!(saf, "SAF", "String");
-        fill_req_field!(source, "SRC", "String");
-        fill_req_field!(mti, "MTI", "String");
+        fill_req_field!(set_saf, "SAF", "String");
+        fill_req_field!(set_source, "SRC", "String");
+        fill_req_field!(set_mti, "MTI", "String");
         // Authorization serno
         match data.remove("Serno") {
             Some(x) => {
@@ -136,8 +181,6 @@ impl SigmaRequest {
         Ok(req)
     }
 
-    // TODO: access to fields
-
     pub fn encode(&self) -> Result<Bytes, Error> {
         let mut buf = BytesMut::with_capacity(8192);
         buf.put(self.saf.as_bytes());
@@ -166,6 +209,36 @@ impl SigmaRequest {
         buf_res.put(buf);
 
         Ok(buf_res.into())
+    }
+
+    pub fn saf(&self) -> &str {
+        &self.saf
+    }
+
+    pub fn set_saf(&mut self, v: String) -> Result<(), Error> {
+        validate_saf(&v)?;
+        self.saf = v;
+        Ok(())
+    }
+
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    pub fn set_source(&mut self, v: String) -> Result<(), Error> {
+        validate_source(&v)?;
+        self.source = v;
+        Ok(())
+    }
+
+    pub fn mti(&self) -> &str {
+        &self.mti
+    }
+
+    pub fn set_mti(&mut self, v: String) -> Result<(), Error> {
+        validate_mti(&v)?;
+        self.mti = v;
+        Ok(())
     }
 }
 
@@ -210,7 +283,7 @@ impl FeeData {
 
 #[derive(Serialize, Debug)]
 pub struct SigmaResponse {
-    pub mti: String,
+    mti: String,
     pub auth_serno: u64,
     pub reason: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -219,33 +292,20 @@ pub struct SigmaResponse {
     pub adata: Option<String>,
 }
 
-fn bytes_split_to(bytes: &mut Bytes, at: usize) -> Result<Bytes, Error> {
-    let len = bytes.len();
-
-    if len < at {
-        return Err(Error::Bounds(format!(
-            "split_to out of bounds: {:?} <= {:?}",
-            at,
-            bytes.len(),
-        )));
-    }
-
-    Ok(bytes.split_to(at))
-}
-
 impl SigmaResponse {
-    pub fn new(mti: &str, auth_serno: u64, reason: u32) -> Self {
-        Self {
+    pub fn new(mti: &str, auth_serno: u64, reason: u32) -> Result<Self, Error> {
+        validate_mti(mti)?;
+        Ok(Self {
             mti: mti.into(),
             auth_serno,
             reason,
             fees: Vec::new(),
             adata: Option::None,
-        }
+        })
     }
 
     pub fn decode(mut data: Bytes) -> Result<Self, Error> {
-        let mut resp = Self::new("0100", 0, 0);
+        let mut resp = Self::new("0100", 0, 0)?;
 
         let msg_len = parse_ascii_bytes!(
             &bytes_split_to(&mut data, 5)?,
@@ -254,7 +314,7 @@ impl SigmaResponse {
         )?;
         let mut data = bytes_split_to(&mut data, msg_len)?;
 
-        resp.mti = String::from_utf8_lossy(&bytes_split_to(&mut data, 4)?).to_string();
+        resp.set_mti(String::from_utf8_lossy(&bytes_split_to(&mut data, 4)?).to_string())?;
         resp.auth_serno = String::from_utf8_lossy(&bytes_split_to(&mut data, 10)?)
             .trim()
             .parse::<u64>()
@@ -297,6 +357,16 @@ impl SigmaResponse {
         }
 
         Ok(resp)
+    }
+
+    pub fn mti(&self) -> &str {
+        &self.mti
+    }
+
+    pub fn set_mti(&mut self, v: String) -> Result<(), Error> {
+        validate_mti(&v)?;
+        self.mti = v;
+        Ok(())
     }
 }
 
@@ -812,5 +882,36 @@ mod tests {
             serialized,
             r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#
         );
+    }
+
+    #[test]
+    fn validate_saf_field() {
+        assert!(validate_saf("Y").is_ok());
+        assert!(validate_saf("N").is_ok());
+
+        assert!(validate_saf("").is_err());
+        assert!(validate_saf("YY").is_err());
+        assert!(validate_saf("NN").is_err());
+        assert!(validate_saf("A").is_err());
+    }
+
+    #[test]
+    fn validate_source_field() {
+        assert!(validate_source("Y").is_ok());
+        assert!(validate_source("N").is_ok());
+
+        assert!(validate_source("").is_err());
+        assert!(validate_source("YY").is_err());
+        assert!(validate_source("NN").is_err());
+    }
+
+    #[test]
+    fn validate_mti_field() {
+        assert!(validate_mti("0120").is_ok());
+
+        assert!(validate_mti("").is_err());
+        assert!(validate_mti("120").is_err());
+        assert!(validate_mti("00120").is_err());
+        assert!(validate_mti("O120").is_err());
     }
 }

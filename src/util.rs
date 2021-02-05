@@ -110,7 +110,7 @@ impl Tag {
         let si = decode_bcd_x2(data[3])?;
         match data[0] {
             b'T' => Ok(Tag::Regular(i)),
-            b'i' => Ok(Tag::Iso(i)),
+            b'I' => Ok(Tag::Iso(i)),
             b'S' => Ok(Tag::IsoSubfield(i, si)),
             _ => Err(Error::IncorrectTag("Unknown kind".to_string())),
         }
@@ -126,7 +126,7 @@ impl Tag {
                 format!("i{:03}", i)
             }
             Tag::IsoSubfield(i, si) => {
-                format!("S{:04}{:02}", i, si)
+                format!("s{:04}{:02}", i, si)
             }
         }
     }
@@ -134,7 +134,7 @@ impl Tag {
     pub fn from_str(s: &str) -> Result<Self, Error> {
         let bytes = s.as_bytes();
         match (bytes.get(0), s.len()) {
-            (Some(b'T'), 5) => {
+            (Some(b'T'), 5) | (Some(b't'), 5) => {
                 let v = parse_ascii_bytes!(
                     &bytes[1..5],
                     u16,
@@ -142,7 +142,7 @@ impl Tag {
                 )?;
                 Ok(Self::Regular(v))
             }
-            (Some(b'i'), 4) => {
+            (Some(b'I'), 4) | (Some(b'i'), 4) => {
                 let v = parse_ascii_bytes!(
                     &bytes[1..4],
                     u16,
@@ -150,7 +150,7 @@ impl Tag {
                 )?;
                 Ok(Self::Iso(v))
             }
-            (Some(b'S'), 7) => {
+            (Some(b'S'), 7) | (Some(b's'), 7) => {
                 let v = parse_ascii_bytes!(
                     &bytes[1..5],
                     u16,
