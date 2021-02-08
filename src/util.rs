@@ -119,15 +119,9 @@ impl Tag {
     #[allow(unused)]
     pub fn to_string(&self) -> String {
         match self {
-            Tag::Regular(i) => {
-                format!("T{:04}", i)
-            }
-            Tag::Iso(i) => {
-                format!("i{:03}", i)
-            }
-            Tag::IsoSubfield(i, si) => {
-                format!("s{:04}{:02}", i, si)
-            }
+            Tag::Regular(i) => format!("T{:04}", i),
+            Tag::Iso(i) => format!("i{:03}", i),
+            Tag::IsoSubfield(i, si) => format!("s{:04}{:02}", i, si),
         }
     }
 
