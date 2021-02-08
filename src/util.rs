@@ -4,7 +4,7 @@ use rand::Rng;
 
 use super::Error;
 
-macro_rules! parse_ascii_bytes {
+macro_rules! parse_ascii_bytes_lossy {
     ($b:expr, $t:ty, $err:expr) => {
         String::from_utf8_lossy($b).parse::<$t>().map_err(|_| $err)
     };
@@ -135,7 +135,7 @@ impl Tag {
         let bytes = s.as_bytes();
         match (bytes.get(0), s.len()) {
             (Some(b'T'), 5) | (Some(b't'), 5) => {
-                let v = parse_ascii_bytes!(
+                let v = parse_ascii_bytes_lossy!(
                     &bytes[1..5],
                     u16,
                     Error::IncorrectTag("incorrect format for T".into())
@@ -143,7 +143,7 @@ impl Tag {
                 Ok(Self::Regular(v))
             }
             (Some(b'I'), 4) | (Some(b'i'), 4) => {
-                let v = parse_ascii_bytes!(
+                let v = parse_ascii_bytes_lossy!(
                     &bytes[1..4],
                     u16,
                     Error::IncorrectTag("incorrect format for i".into())
@@ -151,12 +151,12 @@ impl Tag {
                 Ok(Self::Iso(v))
             }
             (Some(b'S'), 7) | (Some(b's'), 7) => {
-                let v = parse_ascii_bytes!(
+                let v = parse_ascii_bytes_lossy!(
                     &bytes[1..5],
                     u16,
                     Error::IncorrectTag("incorrect format for S".into())
                 )?;
-                let sv = parse_ascii_bytes!(
+                let sv = parse_ascii_bytes_lossy!(
                     &bytes[5..7],
                     u8,
                     Error::IncorrectTag("incorrect format for S".into())
@@ -174,10 +174,10 @@ impl Tag {
     }
 }
 
-pub fn encode_field_to_buf<B: BufMut>(tag: Tag, data: &str, buf: &mut B) -> Result<(), Error> {
+pub fn encode_field_to_buf<B: BufMut>(tag: Tag, data: &[u8], buf: &mut B) -> Result<(), Error> {
     tag.encode_to_buf(buf)?;
     buf.put(&encode_bcd_x4(data.len() as u16)?[..]);
-    buf.put(data.as_bytes());
+    buf.put(data);
     Ok(())
 }
 
@@ -309,14 +309,14 @@ mod tests {
     #[test]
     fn encode_field() {
         let mut buf = BytesMut::new();
-        encode_field_to_buf(Tag::Regular(9), "IDDQD", &mut buf).unwrap();
+        encode_field_to_buf(Tag::Regular(9), "IDDQD".as_bytes(), &mut buf).unwrap();
         assert_eq!(buf, b"T\x00\x09\x00\x00\x05IDDQD"[..]);
     }
 
     #[test]
     fn encode_field_zero() {
         let mut buf = BytesMut::new();
-        encode_field_to_buf(Tag::Iso(9), "", &mut buf).unwrap();
+        encode_field_to_buf(Tag::Iso(9), "".as_bytes(), &mut buf).unwrap();
         assert_eq!(buf, b"I\x00\x09\x00\x00\x00"[..]);
     }
 }

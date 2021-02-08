@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use bytes::Bytes;
@@ -83,15 +84,75 @@ fn validate_saf(s: &str) -> Result<(), Error> {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Debug, PartialEq)]
+pub enum IsoFieldData {
+    String(String),
+    Raw(Vec<u8>),
+}
+
+impl IsoFieldData {
+    pub fn to_string_lossy(self) -> String {
+        match self {
+            Self::String(v) => v,
+            Self::Raw(v) => String::from_utf8(v)
+                .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned()),
+        }
+    }
+
+    pub fn to_cow_str_lossy<'a, 'b: 'a>(&'b self) -> Cow<'a, str> {
+        match self {
+            Self::String(ref v) => Cow::Borrowed(v),
+            Self::Raw(ref v) => String::from_utf8_lossy(v),
+        }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            IsoFieldData::String(x) => x.as_bytes(),
+            IsoFieldData::Raw(x) => &x,
+        }
+    }
+}
+
+impl From<String> for IsoFieldData {
+    fn from(v: String) -> Self {
+        Self::String(v)
+    }
+}
+
+impl From<&str> for IsoFieldData {
+    fn from(v: &str) -> Self {
+        Self::String(v.into())
+    }
+}
+
+impl From<Vec<u8>> for IsoFieldData {
+    fn from(v: Vec<u8>) -> Self {
+        Self::Raw(v)
+    }
+}
+
+impl From<&[u8]> for IsoFieldData {
+    fn from(v: &[u8]) -> Self {
+        Self::Raw(Vec::from(v))
+    }
+}
+
+impl<T: AsRef<[u8]> + ?Sized> PartialEq<T> for IsoFieldData {
+    fn eq(&self, other: &T) -> bool {
+        self.as_bytes() == other.as_ref()
+    }
+}
+
+#[derive(Debug)]
 pub struct SigmaRequest {
     saf: String,
     source: String,
     mti: String,
     pub auth_serno: u64,
     pub tags: BTreeMap<u16, String>,
-    pub iso_fields: BTreeMap<u16, String>,
-    pub iso_subfields: BTreeMap<(u16, u8), String>,
+    pub iso_fields: BTreeMap<u16, IsoFieldData>,
+    pub iso_subfields: BTreeMap<(u16, u8), IsoFieldData>,
 }
 
 impl SigmaRequest {
@@ -175,10 +236,16 @@ impl SigmaRequest {
                 });
             };
             match tag {
-                Tag::Regular(i) => req.tags.insert(i, content),
-                Tag::Iso(i) => req.iso_fields.insert(i, content),
-                Tag::IsoSubfield(i, si) => req.iso_subfields.insert((i, si), content),
-            };
+                Tag::Regular(i) => {
+                    req.tags.insert(i, content);
+                }
+                Tag::Iso(i) => {
+                    req.iso_fields.insert(i, content.into());
+                }
+                Tag::IsoSubfield(i, si) => {
+                    req.iso_subfields.insert((i, si), content.into());
+                }
+            }
         }
 
         Ok(req)
@@ -196,15 +263,15 @@ impl SigmaRequest {
         }
 
         for (k, v) in self.tags.iter() {
-            encode_field_to_buf(Tag::Regular(*k), &v, &mut buf)?;
+            encode_field_to_buf(Tag::Regular(*k), v.as_bytes(), &mut buf)?;
         }
 
         for (k, v) in self.iso_fields.iter() {
-            encode_field_to_buf(Tag::Iso(*k), &v, &mut buf)?;
+            encode_field_to_buf(Tag::Iso(*k), v.as_bytes(), &mut buf)?;
         }
 
         for ((k, k1), v) in self.iso_subfields.iter() {
-            encode_field_to_buf(Tag::IsoSubfield(*k, *k1), &v, &mut buf)?;
+            encode_field_to_buf(Tag::IsoSubfield(*k, *k1), v.as_bytes(), &mut buf)?;
         }
 
         let mut buf_res = BytesMut::with_capacity(buf.len() + 10);
@@ -256,17 +323,17 @@ impl FeeData {
     pub fn from_slice(data: &[u8]) -> Result<Self, Error> {
         if data.len() >= 8 {
             // "\x00\x32\x00\x00\x108116978300"
-            let reason = parse_ascii_bytes!(
+            let reason = parse_ascii_bytes_lossy!(
                 &data[0..4],
                 u16,
                 Error::incorrect_field_data("FeeData.reason", "valid integer")
             )?;
-            let currency = parse_ascii_bytes!(
+            let currency = parse_ascii_bytes_lossy!(
                 &data[4..7],
                 u16,
                 Error::incorrect_field_data("FeeData.currency", "valid integer")
             )?;
-            let amount = parse_ascii_bytes!(
+            let amount = parse_ascii_bytes_lossy!(
                 &data[7..],
                 u64,
                 Error::incorrect_field_data("FeeData.amount", "valid integer")
@@ -310,7 +377,7 @@ impl SigmaResponse {
     pub fn decode(mut data: Bytes) -> Result<Self, Error> {
         let mut resp = Self::new("0100", 0, 0)?;
 
-        let msg_len = parse_ascii_bytes!(
+        let msg_len = parse_ascii_bytes_lossy!(
             &bytes_split_to(&mut data, 5)?,
             usize,
             Error::incorrect_field_data("message length", "valid integer")
@@ -343,7 +410,7 @@ impl SigmaResponse {
 
             match tag {
                 Tag::Regular(31) => {
-                    resp.reason = parse_ascii_bytes!(
+                    resp.reason = parse_ascii_bytes_lossy!(
                         &data_src,
                         u32,
                         Error::incorrect_field_data("reason", "shloud be u32")

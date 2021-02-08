@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2021-02-05
 ### Added
 - `Error` type.
-- New methods for `SigmaRequest`/`SigmaResponse` for constructing this types and accessing their fields.
+- New methods for `SigmaRequest`/`SigmaResponse` for constructing this types and accessing their fields;
+- Ability to store raw byte fields in `iso_fields` and `iso_subfields` of `SigmaRequest`.
 ### Changed
 - Most of the functions/methods now return `Error` instead of logging and returning `0`/`-1`.
 - Renamed some methods of `SigmaRequest`/`SigmaResponse`.
