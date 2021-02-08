@@ -95,8 +95,11 @@ pub struct SigmaRequest {
 }
 
 impl SigmaRequest {
-    pub fn new(saf: &str, source: &str, mti: &str, auth_serno: u64) -> Self {
-        Self {
+    pub fn new(saf: &str, source: &str, mti: &str, auth_serno: u64) -> Result<Self, Error> {
+        validate_saf(saf)?;
+        validate_source(source)?;
+        validate_mti(mti)?;
+        Ok(Self {
             saf: saf.into(),
             source: source.into(),
             mti: mti.into(),
@@ -104,14 +107,14 @@ impl SigmaRequest {
             tags: Default::default(),
             iso_fields: Default::default(),
             iso_subfields: Default::default(),
-        }
+        })
     }
 
     pub fn from_json_value(mut data: Value) -> Result<SigmaRequest, Error> {
         let data = data.as_object_mut().ok_or(Error::IncorrectData(
             "SigmaRequest JSON should be object".into(),
         ))?;
-        let mut req = Self::new("N", "X", "0100", 0);
+        let mut req = Self::new("N", "X", "0100", 0)?;
 
         macro_rules! fill_req_field {
             ($fname:ident, $pname:literal, $comment:literal) => {
