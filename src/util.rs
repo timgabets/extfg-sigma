@@ -1,5 +1,4 @@
-use bytes::BufMut;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use rand::Rng;
 
 use super::Error;
@@ -8,6 +7,20 @@ macro_rules! parse_ascii_bytes_lossy {
     ($b:expr, $t:ty, $err:expr) => {
         String::from_utf8_lossy($b).parse::<$t>().map_err(|_| $err)
     };
+}
+
+pub(crate) fn bytes_split_to(bytes: &mut Bytes, at: usize) -> Result<Bytes, Error> {
+    let len = bytes.len();
+
+    if len < at {
+        return Err(Error::Bounds(format!(
+            "split_to out of bounds: {:?} <= {:?}",
+            at,
+            bytes.len(),
+        )));
+    }
+
+    Ok(bytes.split_to(at))
 }
 
 /// Generate Authorization Serno
@@ -81,22 +94,22 @@ pub enum Tag {
 }
 
 impl Tag {
-    pub fn encode_to_buf<B: BufMut>(&self, buf: &mut B) -> Result<(), Error> {
+    pub fn encode_to_buf(&self, buf: &mut BytesMut) -> Result<(), Error> {
         match self {
             Self::Regular(i) => {
-                buf.put(&b"T"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(0);
+                buf.extend_from_slice(&b"T"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[0]);
             }
             Self::Iso(i) => {
-                buf.put(&b"I"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(0);
+                buf.extend_from_slice(&b"I"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[0]);
             }
             Self::IsoSubfield(i, si) => {
-                buf.put(&b"S"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(encode_bcd_x2(*si)?);
+                buf.extend_from_slice(&b"S"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[encode_bcd_x2(*si)?]);
             }
         }
         Ok(())
@@ -168,11 +181,22 @@ impl Tag {
     }
 }
 
-pub fn encode_field_to_buf<B: BufMut>(tag: Tag, data: &[u8], buf: &mut B) -> Result<(), Error> {
+pub fn encode_field_to_buf(tag: Tag, data: &[u8], buf: &mut BytesMut) -> Result<(), Error> {
     tag.encode_to_buf(buf)?;
-    buf.put(&encode_bcd_x4(data.len() as u16)?[..]);
-    buf.put(data);
+    buf.extend_from_slice(&encode_bcd_x4(data.len() as u16)?[..]);
+    buf.extend_from_slice(data);
     Ok(())
+}
+
+pub fn decode_field_from_cursor(buf: &mut Bytes) -> Result<(Tag, Bytes), Error> {
+    let tag_src = bytes_split_to(buf, 4)?;
+    let tag = Tag::decode(tag_src)?;
+
+    let len_src = bytes_split_to(buf, 2)?;
+    let len = decode_bcd_x4(&[len_src[0], len_src[1]])?;
+
+    let data = bytes_split_to(buf, len as usize)?;
+    Ok((tag, data))
 }
 
 #[cfg(test)]
@@ -312,5 +336,21 @@ mod tests {
         let mut buf = BytesMut::new();
         encode_field_to_buf(Tag::Iso(9), "".as_bytes(), &mut buf).unwrap();
         assert_eq!(buf, b"I\x00\x09\x00\x00\x00"[..]);
+    }
+
+    #[test]
+    fn decode_field() {
+        let mut buf = Bytes::from_static(b"T\x00\x09\x00\x00\x05IDDQD");
+        let (tag, data) = decode_field_from_cursor(&mut buf).unwrap();
+        assert_eq!(tag, Tag::Regular(9));
+        assert_eq!(data[..], b"IDDQD"[..]);
+    }
+
+    #[test]
+    fn decode_field_zero() {
+        let mut buf = Bytes::from_static(b"I\x00\x09\x00\x00\x00");
+        let (tag, data) = decode_field_from_cursor(&mut buf).unwrap();
+        assert_eq!(tag, Tag::Iso(9));
+        assert_eq!(data[..], b""[..]);
     }
 }

@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use bytes::Bytes;
-use bytes::{BufMut, BytesMut};
-use serde::Serialize;
+use bytes::{Bytes, BytesMut};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::util::*;
@@ -35,20 +34,6 @@ impl Error {
             should_be: should_be.into(),
         }
     }
-}
-
-fn bytes_split_to(bytes: &mut Bytes, at: usize) -> Result<Bytes, Error> {
-    let len = bytes.len();
-
-    if len < at {
-        return Err(Error::Bounds(format!(
-            "split_to out of bounds: {:?} <= {:?}",
-            at,
-            bytes.len(),
-        )));
-    }
-
-    Ok(bytes.split_to(at))
 }
 
 fn validate_mti(s: &str) -> Result<(), Error> {
@@ -84,7 +69,7 @@ fn validate_saf(s: &str) -> Result<(), Error> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum IsoFieldData {
     String(String),
     Raw(Vec<u8>),
@@ -111,6 +96,11 @@ impl IsoFieldData {
             IsoFieldData::String(x) => x.as_bytes(),
             IsoFieldData::Raw(x) => &x,
         }
+    }
+
+    pub fn from_bytes(data: Bytes) -> Self {
+        let vec = data.to_vec();
+        String::from_utf8(vec).map_or_else(|err| Self::Raw(err.into_bytes()), |s| Self::String(s))
     }
 }
 
@@ -144,7 +134,7 @@ impl<T: AsRef<[u8]> + ?Sized> PartialEq<T> for IsoFieldData {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SigmaRequest {
     saf: String,
     source: String,
@@ -253,13 +243,15 @@ impl SigmaRequest {
 
     pub fn encode(&self) -> Result<Bytes, Error> {
         let mut buf = BytesMut::with_capacity(8192);
-        buf.put(self.saf.as_bytes());
-        buf.put(self.source.as_bytes());
-        buf.put(self.mti.as_bytes());
+        buf.extend_from_slice(b"00000");
+
+        buf.extend_from_slice(self.saf.as_bytes());
+        buf.extend_from_slice(self.source.as_bytes());
+        buf.extend_from_slice(self.mti.as_bytes());
         if self.auth_serno > 9999999999 {
-            buf.put(&format!("{}", self.auth_serno).as_bytes()[0..10]);
+            buf.extend_from_slice(&format!("{}", self.auth_serno).as_bytes()[0..10]);
         } else {
-            buf.put(format!("{:010}", self.auth_serno).as_bytes());
+            buf.extend_from_slice(format!("{:010}", self.auth_serno).as_bytes());
         }
 
         for (k, v) in self.tags.iter() {
@@ -274,11 +266,51 @@ impl SigmaRequest {
             encode_field_to_buf(Tag::IsoSubfield(*k, *k1), v.as_bytes(), &mut buf)?;
         }
 
-        let mut buf_res = BytesMut::with_capacity(buf.len() + 10);
-        buf_res.put(format!("{:05}", buf.len()).as_bytes());
-        buf_res.put(buf);
+        let msg_len = buf.len() - 5;
+        buf[0..5].copy_from_slice(format!("{:05}", msg_len).as_bytes());
+        Ok(buf.freeze())
+    }
 
-        Ok(buf_res.into())
+    pub fn decode(mut data: Bytes) -> Result<Self, Error> {
+        let mut req = Self::new("N", "X", "0100", 0)?;
+
+        let msg_len = parse_ascii_bytes_lossy!(
+            &bytes_split_to(&mut data, 5)?,
+            usize,
+            Error::incorrect_field_data("message length", "valid integer")
+        )?;
+        let mut data = bytes_split_to(&mut data, msg_len)?;
+
+        req.set_saf(String::from_utf8_lossy(&bytes_split_to(&mut data, 1)?).to_string())?;
+        req.set_source(String::from_utf8_lossy(&bytes_split_to(&mut data, 1)?).to_string())?;
+        req.set_mti(String::from_utf8_lossy(&bytes_split_to(&mut data, 4)?).to_string())?;
+        req.auth_serno = String::from_utf8_lossy(&bytes_split_to(&mut data, 10)?)
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| Error::IncorrectFieldData {
+                field_name: "Serno".into(),
+                should_be: "u64".into(),
+            })?;
+
+        while !data.is_empty() {
+            let (tag, data_src) = decode_field_from_cursor(&mut data)?;
+
+            match tag {
+                Tag::Regular(i) => {
+                    req.tags
+                        .insert(i, String::from_utf8_lossy(&data_src).into_owned());
+                }
+                Tag::Iso(i) => {
+                    req.iso_fields.insert(i, IsoFieldData::from_bytes(data_src));
+                }
+                Tag::IsoSubfield(i, si) => {
+                    req.iso_subfields
+                        .insert((i, si), IsoFieldData::from_bytes(data_src));
+                }
+            }
+        }
+
+        Ok(req)
     }
 
     pub fn saf(&self) -> &str {
@@ -312,7 +344,7 @@ impl SigmaRequest {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct FeeData {
     pub reason: u16,
     pub currency: u16,
@@ -349,9 +381,31 @@ impl FeeData {
             ))
         }
     }
+
+    pub fn encode(&self) -> Result<Bytes, Error> {
+        let mut buf = BytesMut::new();
+
+        if self.reason > 9999 {
+            return Err(Error::Bounds(
+                "FeeData.reason should be less or equal 9999".into(),
+            ));
+        }
+        buf.extend_from_slice(format!("{:<04}", self.reason).as_bytes());
+
+        if self.currency > 999 {
+            return Err(Error::Bounds(
+                "FeeData.reason should be less or equal 999".into(),
+            ));
+        }
+        buf.extend_from_slice(format!("{:<03}", self.currency).as_bytes());
+
+        buf.extend_from_slice(format!("{}", self.amount).as_bytes());
+
+        Ok(buf.freeze())
+    }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SigmaResponse {
     mti: String,
     pub auth_serno: u64,
@@ -400,13 +454,7 @@ impl SigmaResponse {
              *        |             |      |             |                       |
              *        |__ tag id ___|      |tag data len |_______ data __________|
              */
-            let tag_src = bytes_split_to(&mut data, 4)?;
-            let tag = Tag::decode(tag_src)?;
-
-            let len_src = bytes_split_to(&mut data, 2)?;
-            let len = decode_bcd_x4(&[len_src[0], len_src[1]])?;
-
-            let data_src = bytes_split_to(&mut data, len as usize)?;
+            let (tag, data_src) = decode_field_from_cursor(&mut data)?;
 
             match tag {
                 Tag::Regular(31) => {
@@ -437,6 +485,33 @@ impl SigmaResponse {
         validate_mti(&v)?;
         self.mti = v;
         Ok(())
+    }
+
+    pub fn encode(&self) -> Result<Bytes, Error> {
+        let mut buf = BytesMut::with_capacity(8192);
+        buf.extend_from_slice(b"00000");
+
+        buf.extend_from_slice(self.mti.as_bytes());
+        if self.auth_serno > 9999999999 {
+            buf.extend_from_slice(&format!("{}", self.auth_serno).as_bytes()[0..10]);
+        } else {
+            buf.extend_from_slice(format!("{:010}", self.auth_serno).as_bytes());
+        }
+        encode_field_to_buf(
+            Tag::Regular(31),
+            format!("{}", self.reason).as_bytes(),
+            &mut buf,
+        )?;
+        for i in &self.fees {
+            encode_field_to_buf(Tag::Regular(32), &i.encode()?, &mut buf)?;
+        }
+        if let Some(ref adata) = self.adata {
+            encode_field_to_buf(Tag::Regular(48), adata.as_bytes(), &mut buf)?;
+        }
+
+        let msg_len = buf.len() - 5;
+        buf[0..5].copy_from_slice(format!("{:05}", msg_len).as_bytes());
+        Ok(buf.freeze())
     }
 }
 
@@ -779,7 +854,7 @@ mod tests {
     }
 
     #[test]
-    fn serializing_generated_auth_serno() {
+    fn encode_generated_auth_serno() {
         let payload = r#"{
                 "SAF": "Y",
                 "SRC": "M",
@@ -798,7 +873,7 @@ mod tests {
     }
 
     #[test]
-    fn serializing_ok() {
+    fn encode_sigma_request() {
         let payload = r#"{
                 "SAF": "Y",
                 "SRC": "M",
@@ -855,7 +930,64 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_decode() {
+    fn decode_sigma_request() {
+        let src = Bytes::from_static(b"00536YM02006007040979T\x00\x00\x00\x00\x132371492071643T\x00\x01\x00\x00\x01CT\x00\x02\x00\x00\x03643T\x00\x03\x00\x00\x12000100000000T\x00\x04\x00\x00\x03978T\x00\x05\x00\x00\x12000300000000T\x00\x06\x00\x00\x04OPS6T\x00\x07\x00\x00\x0219T\x00\x08\x00\x00\x03643T\x00\t\x00\x00\x043102T\x00\x10\x00\x00\x043104T\x00\x11\x00\x00\x012T\x00\x14\x00\x00\x10IDDQD BankT\x00\x16\x00\x00\x0874707182T\x00\x18\x00\x00\x01YT\x00\x22\x00\x00\x12000000000010I\x00\x00\x00\x00\x040100I\x00\x02\x00\x00\x16555544******1111I\x00\x03\x00\x00\x06500000I\x00\x04\x00\x00\x12000100000000I\x00\x06\x00\x00\x12000100000000I\x00\x07\x00\x00\x100629151748I\x00\x11\x00\x00\x06100250I\x00\x12\x00\x00\x06181748I\x00\x13\x00\x00\x040629I\x00\x18\x00\x00\x040000I\x00\"\x00\x00\x040000I\x00%\x00\x00\x0202I\x002\x00\x00\x06010455I\x007\x00\x00\x12002595100250I\x00A\x00\x00\x03990I\x00B\x00\x00\x04DCZ1I\x00C\x00\x008IDDQD Bank.                         GEI\x00H\x00\x00\x16USRDT|2595100250I\x00I\x00\x00\x03643I\x00Q\x00\x00\x03643I\x00`\x00\x00\x013I\x01\x01\x00\x00\x0891926242I\x01\x02\x00\x00\x132371492071643");
+        let json = r#"{
+                "SAF": "Y",
+                "SRC": "M",
+                "MTI": "0200",
+                "Serno": 6007040979,
+                "T0000": 2371492071643,
+                "T0001": "C",
+                "T0002": 643,
+                "T0003": "000100000000",
+                "T0004": 978,
+                "T0005": "000300000000",
+                "T0006": "OPS6",
+                "T0007": 19,
+                "T0008": 643,
+                "T0009": 3102,
+                "T0010": 3104,
+                "T0011": 2,
+                "T0014": "IDDQD Bank",
+                "T0016": 74707182,
+                "T0018": "Y",
+                "T0022": "000000000010",
+                "i000": "0100",
+                "i002": "555544******1111",
+                "i003": "500000",
+                "i004": "000100000000",
+                "i006": "000100000000",
+                "i007": "0629151748",
+                "i011": "100250",
+                "i012": "181748",
+                "i013": "0629",
+                "i018": "0000",
+                "i022": "0000",
+                "i025": "02",
+                "i032": "010455",
+                "i037": "002595100250",
+                "i041": 990,
+                "i042": "DCZ1",
+                "i043": "IDDQD Bank.                         GE",
+                "i048": "USRDT|2595100250",
+                "i049": 643,
+                "i051": 643,
+                "i060": 3,
+                "i101": 91926242,
+                "i102": 2371492071643
+            }"#;
+
+        let target: SigmaRequest =
+            SigmaRequest::from_json_value(serde_json::from_str(&json).unwrap()).unwrap();
+
+        let req = SigmaRequest::decode(src).unwrap();
+
+        assert_eq!(req, target);
+    }
+
+    #[test]
+    fn decode_sigma_response() {
         let s = Bytes::from_static(b"0002401104007040978T\x00\x31\x00\x00\x048495");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -871,21 +1003,21 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_incorrect_auth_serno() {
+    fn decode_sigma_response_incorrect_auth_serno() {
         let s = Bytes::from_static(b"000250110XYZ7040978T\x00\x31\x00\x00\x048100");
 
         assert!(SigmaResponse::decode(s).is_err());
     }
 
     #[test]
-    fn sigma_response_incorrect_reason() {
+    fn decode_sigma_response_incorrect_reason() {
         let s = Bytes::from_static(b"0002501104007040978T\x00\x31\x00\x00\x04ABCD");
 
         assert!(SigmaResponse::decode(s).is_err());
     }
 
     #[test]
-    fn sigma_response_fee_data() {
+    fn decode_sigma_response_fee_data() {
         let s = Bytes::from_static(
             b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300",
         );
@@ -903,7 +1035,7 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_correct_short_auth_serno() {
+    fn decode_sigma_response_correct_short_auth_serno() {
         let s = Bytes::from_static(b"000240110123123    T\x00\x31\x00\x00\x048100");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -919,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn fee_data() {
+    fn decode_fee_data() {
         let data = b"8116978300";
 
         let fee = FeeData::from_slice(data).unwrap();
@@ -929,7 +1061,7 @@ mod tests {
     }
 
     #[test]
-    fn fee_data_large_amount() {
+    fn decode_fee_data_large_amount() {
         let data = b"8116643123456789";
 
         let fee = FeeData::from_slice(data).unwrap();
@@ -939,7 +1071,7 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_fee_data_additional_data() {
+    fn decode_sigma_response_fee_data_additional_data() {
         let s = Bytes::from_static(b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -952,6 +1084,45 @@ mod tests {
             serialized,
             r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#
         );
+    }
+
+    #[test]
+    fn encode_fee_data() {
+        let fee_data = FeeData {
+            reason: 8123,
+            currency: 643,
+            amount: 1234567890,
+        };
+
+        assert_eq!(fee_data.encode().unwrap()[..], b"81236431234567890"[..]);
+    }
+
+    #[test]
+    fn encode_fee_data_incorrect() {
+        assert!(FeeData {
+            reason: 10000,
+            currency: 643,
+            amount: 1234567890,
+        }
+        .encode()
+        .is_err());
+
+        assert!(FeeData {
+            reason: 8123,
+            currency: 6430,
+            amount: 1234567890,
+        }
+        .encode()
+        .is_err());
+    }
+
+    #[test]
+    fn encode_sigma_response_fee_data_additional_data() {
+        let src = r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#;
+        let response = serde_json::from_str::<SigmaResponse>(&src).unwrap();
+
+        let target = b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=";
+        assert_eq!(response.encode().unwrap()[..], target[..])
     }
 
     #[test]
