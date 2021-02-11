@@ -1,6 +1,4 @@
-use bytes::BufMut;
-use bytes::Bytes;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use rand::Rng;
 
 use super::Error;
@@ -9,6 +7,20 @@ macro_rules! parse_ascii_bytes_lossy {
     ($b:expr, $t:ty, $err:expr) => {
         String::from_utf8_lossy($b).parse::<$t>().map_err(|_| $err)
     };
+}
+
+pub(crate) fn bytes_split_to(bytes: &mut Bytes, at: usize) -> Result<Bytes, Error> {
+    let len = bytes.len();
+
+    if len < at {
+        return Err(Error::Bounds(format!(
+            "split_to out of bounds: {:?} <= {:?}",
+            at,
+            bytes.len(),
+        )));
+    }
+
+    Ok(bytes.split_to(at))
 }
 
 /// Generate Authorization Serno
@@ -176,6 +188,17 @@ pub fn encode_field_to_buf(tag: Tag, data: &[u8], buf: &mut BytesMut) -> Result<
     Ok(())
 }
 
+pub fn decode_field_from_cursor(buf: &mut Bytes) -> Result<(Tag, Bytes), Error> {
+    let tag_src = bytes_split_to(buf, 4)?;
+    let tag = Tag::decode(tag_src)?;
+
+    let len_src = bytes_split_to(buf, 2)?;
+    let len = decode_bcd_x4(&[len_src[0], len_src[1]])?;
+
+    let data = bytes_split_to(buf, len as usize)?;
+    Ok((tag, data))
+}
+
 #[cfg(test)]
 mod tests {
     use bytes::BytesMut;
@@ -313,5 +336,21 @@ mod tests {
         let mut buf = BytesMut::new();
         encode_field_to_buf(Tag::Iso(9), "".as_bytes(), &mut buf).unwrap();
         assert_eq!(buf, b"I\x00\x09\x00\x00\x00"[..]);
+    }
+
+    #[test]
+    fn decode_field() {
+        let mut buf = Bytes::from_static(b"T\x00\x09\x00\x00\x05IDDQD");
+        let (tag, data) = decode_field_from_cursor(&mut buf).unwrap();
+        assert_eq!(tag, Tag::Regular(9));
+        assert_eq!(data[..], b"IDDQD"[..]);
+    }
+
+    #[test]
+    fn decode_field_zero() {
+        let mut buf = Bytes::from_static(b"I\x00\x09\x00\x00\x00");
+        let (tag, data) = decode_field_from_cursor(&mut buf).unwrap();
+        assert_eq!(tag, Tag::Iso(9));
+        assert_eq!(data[..], b""[..]);
     }
 }
