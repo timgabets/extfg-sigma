@@ -1,9 +1,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use bytes::Bytes;
-use bytes::{BufMut, BytesMut};
-use serde::Serialize;
+use bytes::{Bytes, BytesMut};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::util::*;
@@ -253,13 +252,15 @@ impl SigmaRequest {
 
     pub fn encode(&self) -> Result<Bytes, Error> {
         let mut buf = BytesMut::with_capacity(8192);
-        buf.put(self.saf.as_bytes());
-        buf.put(self.source.as_bytes());
-        buf.put(self.mti.as_bytes());
+        buf.extend_from_slice(b"00000");
+
+        buf.extend_from_slice(self.saf.as_bytes());
+        buf.extend_from_slice(self.source.as_bytes());
+        buf.extend_from_slice(self.mti.as_bytes());
         if self.auth_serno > 9999999999 {
-            buf.put(&format!("{}", self.auth_serno).as_bytes()[0..10]);
+            buf.extend_from_slice(&format!("{}", self.auth_serno).as_bytes()[0..10]);
         } else {
-            buf.put(format!("{:010}", self.auth_serno).as_bytes());
+            buf.extend_from_slice(format!("{:010}", self.auth_serno).as_bytes());
         }
 
         for (k, v) in self.tags.iter() {
@@ -274,11 +275,9 @@ impl SigmaRequest {
             encode_field_to_buf(Tag::IsoSubfield(*k, *k1), v.as_bytes(), &mut buf)?;
         }
 
-        let mut buf_res = BytesMut::with_capacity(buf.len() + 10);
-        buf_res.put(format!("{:05}", buf.len()).as_bytes());
-        buf_res.put(buf);
-
-        Ok(buf_res.into())
+        let msg_len = buf.len() - 5;
+        buf[0..5].copy_from_slice(format!("{:05}", msg_len).as_bytes());
+        Ok(buf.freeze())
     }
 
     pub fn saf(&self) -> &str {
@@ -312,7 +311,7 @@ impl SigmaRequest {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct FeeData {
     pub reason: u16,
     pub currency: u16,
@@ -349,9 +348,31 @@ impl FeeData {
             ))
         }
     }
+
+    pub fn encode(&self) -> Result<Bytes, Error> {
+        let mut buf = BytesMut::new();
+
+        if self.reason > 9999 {
+            return Err(Error::Bounds(
+                "FeeData.reason should be less or equal 9999".into(),
+            ));
+        }
+        buf.extend_from_slice(format!("{:<04}", self.reason).as_bytes());
+
+        if self.currency > 999 {
+            return Err(Error::Bounds(
+                "FeeData.reason should be less or equal 999".into(),
+            ));
+        }
+        buf.extend_from_slice(format!("{:<03}", self.currency).as_bytes());
+
+        buf.extend_from_slice(format!("{}", self.amount).as_bytes());
+
+        Ok(buf.freeze())
+    }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct SigmaResponse {
     mti: String,
     pub auth_serno: u64,
@@ -437,6 +458,33 @@ impl SigmaResponse {
         validate_mti(&v)?;
         self.mti = v;
         Ok(())
+    }
+
+    pub fn encode(&self) -> Result<Bytes, Error> {
+        let mut buf = BytesMut::with_capacity(8192);
+        buf.extend_from_slice(b"00000");
+
+        buf.extend_from_slice(self.mti.as_bytes());
+        if self.auth_serno > 9999999999 {
+            buf.extend_from_slice(&format!("{}", self.auth_serno).as_bytes()[0..10]);
+        } else {
+            buf.extend_from_slice(format!("{:010}", self.auth_serno).as_bytes());
+        }
+        encode_field_to_buf(
+            Tag::Regular(31),
+            format!("{}", self.reason).as_bytes(),
+            &mut buf,
+        )?;
+        for i in &self.fees {
+            encode_field_to_buf(Tag::Regular(32), &i.encode()?, &mut buf)?;
+        }
+        if let Some(ref adata) = self.adata {
+            encode_field_to_buf(Tag::Regular(48), adata.as_bytes(), &mut buf)?;
+        }
+
+        let msg_len = buf.len() - 5;
+        buf[0..5].copy_from_slice(format!("{:05}", msg_len).as_bytes());
+        Ok(buf.freeze())
     }
 }
 
@@ -779,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn serializing_generated_auth_serno() {
+    fn encode_generated_auth_serno() {
         let payload = r#"{
                 "SAF": "Y",
                 "SRC": "M",
@@ -798,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn serializing_ok() {
+    fn encode_sigma_request() {
         let payload = r#"{
                 "SAF": "Y",
                 "SRC": "M",
@@ -855,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_decode() {
+    fn decode_sigma_response() {
         let s = Bytes::from_static(b"0002401104007040978T\x00\x31\x00\x00\x048495");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -871,21 +919,21 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_incorrect_auth_serno() {
+    fn decode_sigma_response_incorrect_auth_serno() {
         let s = Bytes::from_static(b"000250110XYZ7040978T\x00\x31\x00\x00\x048100");
 
         assert!(SigmaResponse::decode(s).is_err());
     }
 
     #[test]
-    fn sigma_response_incorrect_reason() {
+    fn decode_sigma_response_incorrect_reason() {
         let s = Bytes::from_static(b"0002501104007040978T\x00\x31\x00\x00\x04ABCD");
 
         assert!(SigmaResponse::decode(s).is_err());
     }
 
     #[test]
-    fn sigma_response_fee_data() {
+    fn decode_sigma_response_fee_data() {
         let s = Bytes::from_static(
             b"0004001104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x108116978300",
         );
@@ -903,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_correct_short_auth_serno() {
+    fn decode_sigma_response_correct_short_auth_serno() {
         let s = Bytes::from_static(b"000240110123123    T\x00\x31\x00\x00\x048100");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -919,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn fee_data() {
+    fn decode_fee_data() {
         let data = b"8116978300";
 
         let fee = FeeData::from_slice(data).unwrap();
@@ -929,7 +977,7 @@ mod tests {
     }
 
     #[test]
-    fn fee_data_large_amount() {
+    fn decode_fee_data_large_amount() {
         let data = b"8116643123456789";
 
         let fee = FeeData::from_slice(data).unwrap();
@@ -939,7 +987,7 @@ mod tests {
     }
 
     #[test]
-    fn sigma_response_fee_data_additional_data() {
+    fn decode_sigma_response_fee_data_additional_data() {
         let s = Bytes::from_static(b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=");
 
         let resp = SigmaResponse::decode(s).unwrap();
@@ -952,6 +1000,45 @@ mod tests {
             serialized,
             r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#
         );
+    }
+
+    #[test]
+    fn encode_fee_data() {
+        let fee_data = FeeData {
+            reason: 8123,
+            currency: 643,
+            amount: 1234567890,
+        };
+
+        assert_eq!(fee_data.encode().unwrap()[..], b"81236431234567890"[..]);
+    }
+
+    #[test]
+    fn encode_fee_data_incorrect() {
+        assert!(FeeData {
+            reason: 10000,
+            currency: 643,
+            amount: 1234567890,
+        }
+        .encode()
+        .is_err());
+
+        assert!(FeeData {
+            reason: 8123,
+            currency: 6430,
+            amount: 1234567890,
+        }
+        .encode()
+        .is_err());
+    }
+
+    #[test]
+    fn encode_sigma_response_fee_data_additional_data() {
+        let src = r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#;
+        let response = serde_json::from_str::<SigmaResponse>(&src).unwrap();
+
+        let target = b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=";
+        assert_eq!(response.encode().unwrap()[..], target[..])
     }
 
     #[test]

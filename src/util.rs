@@ -1,5 +1,6 @@
 use bytes::BufMut;
 use bytes::Bytes;
+use bytes::BytesMut;
 use rand::Rng;
 
 use super::Error;
@@ -81,22 +82,22 @@ pub enum Tag {
 }
 
 impl Tag {
-    pub fn encode_to_buf<B: BufMut>(&self, buf: &mut B) -> Result<(), Error> {
+    pub fn encode_to_buf(&self, buf: &mut BytesMut) -> Result<(), Error> {
         match self {
             Self::Regular(i) => {
-                buf.put(&b"T"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(0);
+                buf.extend_from_slice(&b"T"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[0]);
             }
             Self::Iso(i) => {
-                buf.put(&b"I"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(0);
+                buf.extend_from_slice(&b"I"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[0]);
             }
             Self::IsoSubfield(i, si) => {
-                buf.put(&b"S"[..]);
-                buf.put(&encode_bcd_x4(*i)?[..]);
-                buf.put_u8(encode_bcd_x2(*si)?);
+                buf.extend_from_slice(&b"S"[..]);
+                buf.extend_from_slice(&encode_bcd_x4(*i)?[..]);
+                buf.extend_from_slice(&[encode_bcd_x2(*si)?]);
             }
         }
         Ok(())
@@ -168,10 +169,10 @@ impl Tag {
     }
 }
 
-pub fn encode_field_to_buf<B: BufMut>(tag: Tag, data: &[u8], buf: &mut B) -> Result<(), Error> {
+pub fn encode_field_to_buf(tag: Tag, data: &[u8], buf: &mut BytesMut) -> Result<(), Error> {
     tag.encode_to_buf(buf)?;
-    buf.put(&encode_bcd_x4(data.len() as u16)?[..]);
-    buf.put(data);
+    buf.extend_from_slice(&encode_bcd_x4(data.len() as u16)?[..]);
+    buf.extend_from_slice(data);
     Ok(())
 }
 
