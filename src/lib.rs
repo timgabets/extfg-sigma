@@ -10,6 +10,9 @@ use crate::util::*;
 #[macro_use]
 mod util;
 
+#[cfg(feature = "codec")]
+mod codec;
+
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum Error {
     #[error("{0}")]
