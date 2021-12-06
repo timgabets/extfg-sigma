@@ -97,13 +97,13 @@ impl IsoFieldData {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             IsoFieldData::String(x) => x.as_bytes(),
-            IsoFieldData::Raw(x) => &x,
+            IsoFieldData::Raw(x) => x,
         }
     }
 
     pub fn from_bytes(data: Bytes) -> Self {
         let vec = data.to_vec();
-        String::from_utf8(vec).map_or_else(|err| Self::Raw(err.into_bytes()), |s| Self::String(s))
+        String::from_utf8(vec).map_or_else(|err| Self::Raw(err.into_bytes()), Self::String)
     }
 }
 
@@ -165,9 +165,9 @@ impl SigmaRequest {
     }
 
     pub fn from_json_value(mut data: Value) -> Result<SigmaRequest, Error> {
-        let data = data.as_object_mut().ok_or(Error::IncorrectData(
-            "SigmaRequest JSON should be object".into(),
-        ))?;
+        let data = data
+            .as_object_mut()
+            .ok_or_else(|| Error::IncorrectData("SigmaRequest JSON should be object".into()))?;
         let mut req = Self::new("N", "X", "0100", 0)?;
 
         macro_rules! fill_req_field {
@@ -217,7 +217,7 @@ impl SigmaRequest {
         }
 
         for (name, field_data) in data.iter() {
-            let tag = Tag::from_str(&name)?;
+            let tag = Tag::from_str(name)?;
             let content = if let Some(x) = field_data.as_str() {
                 x.into()
             } else if let Some(x) = field_data.as_u64() {
@@ -571,7 +571,7 @@ mod tests {
         }"#;
 
         let r: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).unwrap();
         assert_eq!(r.saf, "Y");
         assert_eq!(r.source, "M");
         assert_eq!(r.mti, "0200");
@@ -692,7 +692,7 @@ mod tests {
         }"#;
 
         let r: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).unwrap();
         assert_eq!(r.saf, "Y");
         assert_eq!(r.source, "M");
         assert_eq!(r.mti, "0200");
@@ -771,7 +771,7 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
@@ -784,7 +784,7 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
@@ -796,7 +796,7 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
@@ -809,7 +809,7 @@ mod tests {
             "MTI": "0200"
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
@@ -821,7 +821,7 @@ mod tests {
         	"SRC": "O"
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if mandatory field is missing");
         }
     }
@@ -834,7 +834,7 @@ mod tests {
             "MTI": 1200
         }"#;
 
-        if SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).is_ok() {
+        if SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).is_ok() {
             unreachable!("Should not return Ok if the filed has invalid format");
         }
     }
@@ -849,7 +849,7 @@ mod tests {
             }"#;
 
         let r: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).unwrap();
         assert!(
             r.auth_serno > 0,
             "Should generate authorization serno if the field is missing"
@@ -866,7 +866,7 @@ mod tests {
             }"#;
 
         let r: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).unwrap();
         let serialized = r.encode().unwrap();
         assert_eq!(
             serialized,
@@ -924,7 +924,7 @@ mod tests {
             }"#;
 
         let r: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&payload).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(payload).unwrap()).unwrap();
         let serialized = r.encode().unwrap();
         assert_eq!(
             serialized,
@@ -982,7 +982,7 @@ mod tests {
             }"#;
 
         let target: SigmaRequest =
-            SigmaRequest::from_json_value(serde_json::from_str(&json).unwrap()).unwrap();
+            SigmaRequest::from_json_value(serde_json::from_str(json).unwrap()).unwrap();
 
         let req = SigmaRequest::decode(src).unwrap();
 
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn encode_sigma_response_fee_data_additional_data() {
         let src = r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI="}"#;
-        let response = serde_json::from_str::<SigmaResponse>(&src).unwrap();
+        let response = serde_json::from_str::<SigmaResponse>(src).unwrap();
 
         let target = b"0015201104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=";
         assert_eq!(response.encode().unwrap()[..], target[..])

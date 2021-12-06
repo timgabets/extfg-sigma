@@ -1,5 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use rand::Rng;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::Error;
 
@@ -75,15 +76,15 @@ pub(crate) fn encode_bcd_x4(v: u16) -> Result<[u8; 2], Error> {
         )));
     }
 
-    let _0 = (v % 10) as u8;
-    let _1 = ((v / 10) % 10) as u8;
-    let _2 = ((v / 100) % 10) as u8;
-    let _3 = ((v / 1000) % 10) as u8;
+    let digit_0 = (v % 10) as u8;
+    let digit_1 = ((v / 10) % 10) as u8;
+    let digit_2 = ((v / 100) % 10) as u8;
+    let digit_3 = ((v / 1000) % 10) as u8;
 
-    let l = (_3 << 4) + _2;
-    let r = (_1 << 4) + _0;
+    let left = (digit_3 << 4) + digit_2;
+    let right = (digit_1 << 4) + digit_0;
 
-    Ok([l, r])
+    Ok([left, right])
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -129,15 +130,6 @@ impl Tag {
         }
     }
 
-    #[allow(unused)]
-    pub fn to_string(&self) -> String {
-        match self {
-            Tag::Regular(i) => format!("T{:04}", i),
-            Tag::Iso(i) => format!("i{:03}", i),
-            Tag::IsoSubfield(i, si) => format!("s{:04}{:02}", i, si),
-        }
-    }
-
     pub fn from_str(s: &str) -> Result<Self, Error> {
         let bytes = s.as_bytes();
         match (bytes.get(0), s.len()) {
@@ -170,13 +162,21 @@ impl Tag {
                 )?;
                 Ok(Self::IsoSubfield(v, sv))
             }
-            (None, _) => return Err(Error::IncorrectTag(format!("Empty"))),
-            (Some(c), l) => {
-                return Err(Error::IncorrectTag(format!(
-                    "Starts with: '{}', length: {}",
-                    c, l
-                )))
-            }
+            (None, _) => Err(Error::IncorrectTag("Empty".into())),
+            (Some(c), l) => Err(Error::IncorrectTag(format!(
+                "Starts with: '{}', length: {}",
+                c, l
+            ))),
+        }
+    }
+}
+
+impl Display for Tag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Tag::Regular(i) => f.write_fmt(format_args!("T{:04}", i)),
+            Tag::Iso(i) => f.write_fmt(format_args!("i{:03}", i)),
+            Tag::IsoSubfield(i, si) => f.write_fmt(format_args!("s{:04}{:02}", i, si)),
         }
     }
 }
