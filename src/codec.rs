@@ -22,7 +22,10 @@ impl PartialEq for ClientProtocolError {
             (Self::StdIoError(self_io), Self::StdIoError(other_io)) => {
                 format!("{:#}", self_io) == format!("{:#}", other_io)
             }
-            (this, that) => this == that,
+            (Self::ExtfgSigma(x), Self::ExtfgSigma(y)) => x == y,
+            (Self::WrongLenUtf8(x), Self::WrongLenUtf8(y)) => x == y,
+            (Self::WrongLenInt(x), Self::WrongLenInt(y)) => x == y,
+            (_,_) => false,
         }
     }
 }
