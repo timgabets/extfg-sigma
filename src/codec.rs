@@ -3,9 +3,9 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{SigmaRequest, SigmaResponse};
 
-/// Ошибка [`Framed`] транспорта с [`SigmaProtocol`].
+/// Ошибка [`tokio_util::codec::Framed`] транспорта с [`ClientProtocolError`].
 #[derive(Debug, thiserror::Error)]
-pub enum ProtocolError {
+pub enum ClientProtocolError {
     #[error(transparent)]
     ExtfgSigma(#[from] crate::Error),
     #[error(transparent)]
@@ -16,7 +16,7 @@ pub enum ProtocolError {
     StdIoError(#[from] std::io::Error),
 }
 
-impl PartialEq for ProtocolError {
+impl PartialEq for ClientProtocolError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::StdIoError(self_io), Self::StdIoError(other_io)) => {
@@ -27,11 +27,11 @@ impl PartialEq for ProtocolError {
     }
 }
 
-pub struct SigmaProtocol;
+pub struct SigmaClientProtocol;
 
-impl Decoder for SigmaProtocol {
+impl Decoder for SigmaClientProtocol {
     type Item = SigmaResponse;
-    type Error = ProtocolError;
+    type Error = ClientProtocolError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         const LEN_BYTES_COUNT: usize = 5;
@@ -41,9 +41,9 @@ impl Decoder for SigmaProtocol {
         }
 
         let msg_len = std::str::from_utf8(&src[0..LEN_BYTES_COUNT])
-            .map_err(ProtocolError::from)?
+            .map_err(ClientProtocolError::from)?
             .parse::<usize>()
-            .map_err(ProtocolError::from)?;
+            .map_err(ClientProtocolError::from)?;
 
         let overall_length = msg_len + LEN_BYTES_COUNT;
 
@@ -54,8 +54,8 @@ impl Decoder for SigmaProtocol {
     }
 }
 
-impl Encoder<SigmaRequest> for SigmaProtocol {
-    type Error = ProtocolError;
+impl Encoder<SigmaRequest> for SigmaClientProtocol {
+    type Error = ClientProtocolError;
 
     fn encode(&mut self, item: SigmaRequest, dst: &mut BytesMut) -> Result<(), Self::Error> {
         dst.put(item.encode()?);
@@ -73,7 +73,7 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put(DATA);
 
-        assert!(matches!(SigmaProtocol.decode(&mut buf), Ok(None)));
+        assert!(matches!(SigmaClientProtocol.decode(&mut buf), Ok(None)));
         assert_eq!(buf, DATA);
     }
 
@@ -83,7 +83,7 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put(DATA);
 
-        assert!(matches!(SigmaProtocol.decode(&mut buf), Ok(None)));
+        assert!(matches!(SigmaClientProtocol.decode(&mut buf), Ok(None)));
         assert_eq!(buf, DATA);
     }
 
@@ -93,7 +93,7 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put(DATA);
 
-        assert!(matches!(SigmaProtocol.decode(&mut buf), Ok(None)));
+        assert!(matches!(SigmaClientProtocol.decode(&mut buf), Ok(None)));
         assert_eq!(buf, DATA);
     }
 
@@ -103,7 +103,7 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put(DATA);
 
-        assert!(matches!(SigmaProtocol.decode(&mut buf), Ok(None)));
+        assert!(matches!(SigmaClientProtocol.decode(&mut buf), Ok(None)));
         assert_eq!(buf, DATA);
     }
 
@@ -113,7 +113,7 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put(DATA);
 
-        assert!(matches!(SigmaProtocol.decode(&mut buf), Ok(Some(_))));
+        assert!(matches!(SigmaClientProtocol.decode(&mut buf), Ok(Some(_))));
         assert_eq!(buf, b""[..]);
     }
 }
