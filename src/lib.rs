@@ -11,7 +11,7 @@ use crate::util::*;
 mod util;
 
 #[cfg(feature = "codec")]
-mod codec;
+pub mod codec;
 
 #[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum Error {
