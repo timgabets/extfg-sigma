@@ -3,7 +3,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{SigmaRequest, SigmaResponse};
 
-/// Ошибка [`tokio_util::codec::Framed`] транспорта с [`ClientProtocolError`].
+/// Errors of [`tokio_util::codec::Framed`] stream with [`SigmaClientProtocol`] codec.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientProtocolError {
     #[error(transparent)]
@@ -25,11 +25,14 @@ impl PartialEq for ClientProtocolError {
             (Self::ExtfgSigma(x), Self::ExtfgSigma(y)) => x == y,
             (Self::WrongLenUtf8(x), Self::WrongLenUtf8(y)) => x == y,
             (Self::WrongLenInt(x), Self::WrongLenInt(y)) => x == y,
-            (_,_) => false,
+            (_, _) => false,
         }
     }
 }
 
+pub const LENGTH_BYTES_COUNT: usize = 5;
+
+/// Codec for semi-automated encoding/decoding of [`SigmaRequest`]s and [`SigmaResponse`]s.
 pub struct SigmaClientProtocol;
 
 impl Decoder for SigmaClientProtocol {
@@ -37,21 +40,25 @@ impl Decoder for SigmaClientProtocol {
     type Error = ClientProtocolError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        const LEN_BYTES_COUNT: usize = 5;
+        let current_length = src.len();
 
-        if src.len() < LEN_BYTES_COUNT {
+        if current_length < LENGTH_BYTES_COUNT {
+            src.reserve(LENGTH_BYTES_COUNT - current_length);
             return Ok(None);
         }
 
-        let msg_len = std::str::from_utf8(&src[0..LEN_BYTES_COUNT])
+        let msg_len = std::str::from_utf8(&src[0..LENGTH_BYTES_COUNT])
             .map_err(ClientProtocolError::from)?
             .parse::<usize>()
             .map_err(ClientProtocolError::from)?;
 
-        let overall_length = msg_len + LEN_BYTES_COUNT;
+        let overall_length = msg_len + LENGTH_BYTES_COUNT;
 
-        Ok(match src.len() < overall_length {
-            true => None,
+        Ok(match current_length < overall_length {
+            true => {
+                src.reserve(overall_length - current_length);
+                None
+            }
             false => Some(SigmaResponse::decode(src.split_to(overall_length).into())?),
         })
     }
