@@ -347,7 +347,7 @@ impl SigmaRequest {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct FeeData {
     pub reason: u16,
     pub currency: u16,
