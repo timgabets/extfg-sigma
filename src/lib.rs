@@ -417,6 +417,8 @@ pub struct SigmaResponse {
     pub fees: Vec<FeeData>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adata: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supdata: Option<String>
 }
 
 impl SigmaResponse {
@@ -428,6 +430,7 @@ impl SigmaResponse {
             reason,
             fees: Vec::new(),
             adata: Option::None,
+            supdata: None
         })
     }
 
@@ -472,6 +475,9 @@ impl SigmaResponse {
                 }
                 Tag::Regular(48) => {
                     resp.adata = Some(String::from_utf8_lossy(&data_src).to_string());
+                }
+                Tag::Regular(50) => {
+                    resp.supdata = Some(String::from_utf8_lossy(&data_src).to_string());
                 }
                 _ => {}
             }
@@ -934,7 +940,7 @@ mod tests {
 
     #[test]
     fn decode_sigma_request() {
-        let src = Bytes::from_static(b"00536YM02006007040979T\x00\x00\x00\x00\x132371492071643T\x00\x01\x00\x00\x01CT\x00\x02\x00\x00\x03643T\x00\x03\x00\x00\x12000100000000T\x00\x04\x00\x00\x03978T\x00\x05\x00\x00\x12000300000000T\x00\x06\x00\x00\x04OPS6T\x00\x07\x00\x00\x0219T\x00\x08\x00\x00\x03643T\x00\t\x00\x00\x043102T\x00\x10\x00\x00\x043104T\x00\x11\x00\x00\x012T\x00\x14\x00\x00\x10IDDQD BankT\x00\x16\x00\x00\x0874707182T\x00\x18\x00\x00\x01YT\x00\x22\x00\x00\x12000000000010I\x00\x00\x00\x00\x040100I\x00\x02\x00\x00\x16555544******1111I\x00\x03\x00\x00\x06500000I\x00\x04\x00\x00\x12000100000000I\x00\x06\x00\x00\x12000100000000I\x00\x07\x00\x00\x100629151748I\x00\x11\x00\x00\x06100250I\x00\x12\x00\x00\x06181748I\x00\x13\x00\x00\x040629I\x00\x18\x00\x00\x040000I\x00\"\x00\x00\x040000I\x00%\x00\x00\x0202I\x002\x00\x00\x06010455I\x007\x00\x00\x12002595100250I\x00A\x00\x00\x03990I\x00B\x00\x00\x04DCZ1I\x00C\x00\x008IDDQD Bank.                         GEI\x00H\x00\x00\x16USRDT|2595100250I\x00I\x00\x00\x03643I\x00Q\x00\x00\x03643I\x00`\x00\x00\x013I\x01\x01\x00\x00\x0891926242I\x01\x02\x00\x00\x132371492071643");
+        let src = Bytes::from_static(b"00545YM02006007040979T\x00\x00\x00\x00\x132371492071643T\x00\x01\x00\x00\x01CT\x00\x02\x00\x00\x03643T\x00\x03\x00\x00\x12000100000000T\x00\x04\x00\x00\x03978T\x00\x05\x00\x00\x12000300000000T\x00\x06\x00\x00\x04OPS6T\x00\x07\x00\x00\x0219T\x00\x08\x00\x00\x03643T\x00\t\x00\x00\x043102T\x00\x10\x00\x00\x043104T\x00\x11\x00\x00\x012T\x00\x14\x00\x00\x10IDDQD BankT\x00\x16\x00\x00\x0874707182T\x00\x18\x00\x00\x01YT\x00\x22\x00\x00\x12000000000010T\x00\x50\x00\x00\x03123I\x00\x00\x00\x00\x040100I\x00\x02\x00\x00\x16555544******1111I\x00\x03\x00\x00\x06500000I\x00\x04\x00\x00\x12000100000000I\x00\x06\x00\x00\x12000100000000I\x00\x07\x00\x00\x100629151748I\x00\x11\x00\x00\x06100250I\x00\x12\x00\x00\x06181748I\x00\x13\x00\x00\x040629I\x00\x18\x00\x00\x040000I\x00\"\x00\x00\x040000I\x00%\x00\x00\x0202I\x002\x00\x00\x06010455I\x007\x00\x00\x12002595100250I\x00A\x00\x00\x03990I\x00B\x00\x00\x04DCZ1I\x00C\x00\x008IDDQD Bank.                         GEI\x00H\x00\x00\x16USRDT|2595100250I\x00I\x00\x00\x03643I\x00Q\x00\x00\x03643I\x00`\x00\x00\x013I\x01\x01\x00\x00\x0891926242I\x01\x02\x00\x00\x132371492071643");
         let json = r#"{
                 "SAF": "Y",
                 "SRC": "M",
@@ -956,6 +962,7 @@ mod tests {
                 "T0016": 74707182,
                 "T0018": "Y",
                 "T0022": "000000000010",
+                "T0050": "123",
                 "i000": "0100",
                 "i002": "555544******1111",
                 "i003": "500000",
@@ -1090,6 +1097,22 @@ mod tests {
     }
 
     #[test]
+    fn decode_sigma_response_fee_data_additional_data_supplementary_data() {
+        let s = Bytes::from_static(b"0016101104007040978T\x00\x31\x00\x00\x048100T\x00\x32\x00\x00\x1181166439000T\x00\x48\x00\x01\x05CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=T\x00\x50\x00\x00\x03123");
+
+        let resp = SigmaResponse::decode(s).unwrap();
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, 8100);
+        //"T0050": "123",
+        let serialized = serde_json::to_string(&resp).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8100,"fees":[{"reason":8116,"currency":643,"amount":9000}],"adata":"CJyuARCDBRibpKn+BSIVCgx0ZmE6FwAAAKoXmwIQnK4BGLcBIhEKDHRmcDoWAAAAxxX+ARik\nATCBu4PdBToICKqv7BQQgwVAnK4BSAI=","supdata":"123"}"#
+        );
+    }
+
+    #[test]
     fn encode_fee_data() {
         let fee_data = FeeData {
             reason: 8123,
@@ -1107,16 +1130,16 @@ mod tests {
             currency: 643,
             amount: 1234567890,
         }
-        .encode()
-        .is_err());
+            .encode()
+            .is_err());
 
         assert!(FeeData {
             reason: 8123,
             currency: 6430,
             amount: 1234567890,
         }
-        .encode()
-        .is_err());
+            .encode()
+            .is_err());
     }
 
     #[test]
