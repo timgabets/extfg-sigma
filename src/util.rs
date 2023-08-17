@@ -132,7 +132,7 @@ impl Tag {
 
     pub fn from_str(s: &str) -> Result<Self, Error> {
         let bytes = s.as_bytes();
-        match (bytes.get(0), s.len()) {
+        match (bytes.first(), s.len()) {
             (Some(b'T'), 5) | (Some(b't'), 5) => {
                 let v = parse_ascii_bytes_lossy!(
                     &bytes[1..5],

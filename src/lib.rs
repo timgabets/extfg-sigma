@@ -48,7 +48,7 @@ fn validate_mti(s: &str) -> Result<(), Error> {
         ));
     }
     for x in b.iter() {
-        if !matches!(x, b'0'..=b'9') {
+        if !x.is_ascii_digit() {
             return Err(Error::incorrect_field_data(
                 "MTI",
                 "4 digit number (string)",
