@@ -48,7 +48,7 @@ fn validate_mti(s: &str) -> Result<(), Error> {
         ));
     }
     for x in b.iter() {
-        if !matches!(x, b'0'..=b'9') {
+        if !x.is_ascii_digit() {
             return Err(Error::incorrect_field_data(
                 "MTI",
                 "4 digit number (string)",
@@ -413,12 +413,14 @@ pub struct SigmaResponse {
     mti: String,
     pub auth_serno: u64,
     pub reason: u32,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fees: Vec<FeeData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adata: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub supdata: Option<String>
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supdata: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xri: Option<String>,
 }
 
 impl SigmaResponse {
@@ -429,8 +431,9 @@ impl SigmaResponse {
             auth_serno,
             reason,
             fees: Vec::new(),
-            adata: Option::None,
-            supdata: None
+            adata: None,
+            supdata: None,
+            xri: None,
         })
     }
 
@@ -473,6 +476,7 @@ impl SigmaResponse {
                 Tag::Regular(32) => {
                     resp.fees.push(FeeData::from_slice(&data_src)?);
                 }
+                Tag::Regular(33) => resp.xri = Some(String::from_utf8_lossy(&data_src).to_string()),
                 Tag::Regular(48) => {
                     resp.adata = Some(String::from_utf8_lossy(&data_src).to_string());
                 }
@@ -516,6 +520,9 @@ impl SigmaResponse {
         }
         if let Some(ref adata) = self.adata {
             encode_field_to_buf(Tag::Regular(48), adata.as_bytes(), &mut buf)?;
+        }
+        if let Some(ref xri) = self.xri {
+            encode_field_to_buf(Tag::Regular(33), xri.as_bytes(), &mut buf)?;
         }
 
         let msg_len = buf.len() - 5;
@@ -672,6 +679,7 @@ mod tests {
             "T0016": 74707182,
             "T0018": "Y",
             "T0022": "000000000010",
+            "T0023": "X-Request-Id",
             "i000": "0100",
             "i002": "555544******1111",
             "i003": "500000",
@@ -736,6 +744,7 @@ mod tests {
         }
         assert_eq!(r.tags.get(&18).unwrap(), "Y");
         assert_eq!(r.tags.get(&22).unwrap(), "000000000010");
+        assert_eq!(r.tags.get(&23).unwrap(), "X-Request-Id");
 
         assert_eq!(r.iso_fields.get(&0).unwrap(), "0100");
 
@@ -1013,6 +1022,25 @@ mod tests {
     }
 
     #[test]
+    fn decode_sigma_response_xri() {
+        let s = Bytes::from_static(
+            b"0004201104007040978T\x00\x31\x00\x00\x048495T\x00\x33\x00\x00\x12X-Request-Id",
+        );
+
+        let resp = SigmaResponse::decode(s).unwrap();
+        assert_eq!(resp.mti, "0110");
+        assert_eq!(resp.auth_serno, 4007040978);
+        assert_eq!(resp.reason, 8495);
+        assert_eq!(resp.xri, Some("X-Request-Id".to_string()));
+
+        let serialized = serde_json::to_string(&resp).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"mti":"0110","auth_serno":4007040978,"reason":8495,"xri":"X-Request-Id"}"#
+        );
+    }
+
+    #[test]
     fn decode_sigma_response_incorrect_auth_serno() {
         let s = Bytes::from_static(b"000250110XYZ7040978T\x00\x31\x00\x00\x048100");
 
@@ -1130,16 +1158,16 @@ mod tests {
             currency: 643,
             amount: 1234567890,
         }
-            .encode()
-            .is_err());
+        .encode()
+        .is_err());
 
         assert!(FeeData {
             reason: 8123,
             currency: 6430,
             amount: 1234567890,
         }
-            .encode()
-            .is_err());
+        .encode()
+        .is_err());
     }
 
     #[test]
