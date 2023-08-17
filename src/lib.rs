@@ -413,10 +413,12 @@ pub struct SigmaResponse {
     mti: String,
     pub auth_serno: u64,
     pub reason: u32,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fees: Vec<FeeData>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adata: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xri: Option<String>,
 }
 
 impl SigmaResponse {
@@ -428,6 +430,7 @@ impl SigmaResponse {
             reason,
             fees: Vec::new(),
             adata: Option::None,
+            xri: Option::None,
         })
     }
 
@@ -470,6 +473,7 @@ impl SigmaResponse {
                 Tag::Regular(32) => {
                     resp.fees.push(FeeData::from_slice(&data_src)?);
                 }
+                Tag::Regular(33) => resp.xri = Some(String::from_utf8_lossy(&data_src).to_string()),
                 Tag::Regular(48) => {
                     resp.adata = Some(String::from_utf8_lossy(&data_src).to_string());
                 }
@@ -510,6 +514,9 @@ impl SigmaResponse {
         }
         if let Some(ref adata) = self.adata {
             encode_field_to_buf(Tag::Regular(48), adata.as_bytes(), &mut buf)?;
+        }
+        if let Some(ref xri) = self.xri {
+            encode_field_to_buf(Tag::Regular(33), xri.as_bytes(), &mut buf)?;
         }
 
         let msg_len = buf.len() - 5;
